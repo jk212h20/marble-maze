@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Board materials — pick one</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../vendor/three/three.module.js",
+    "three/addons/": "../vendor/jsm/"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #101218; color: #cfd6e4; font: 12px/1.5 ui-monospace, SFMono-Regular, monospace; }
+  header { padding: 14px 16px 10px; border-bottom: 1px solid #232936; position: sticky; top: 0; background: #101218ee; backdrop-filter: blur(6px); z-index: 5; }
+  h1 { font-size: 15px; margin: 0 0 2px; letter-spacing: .3px; }
+  .sub { color: #8b93a5; }
+  .knobs { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+  label { color: #9aa3b5; }
+  input[type=range] { width: 280px; accent-color: #e0a24a; }
+  .val { color: #f0c079; min-width: 4.5em; display: inline-block; }
+  .busy { color: #e0a24a; min-width: 6em; }
+  .pick { color: #7fe0a5; }
+  main { padding: 12px 16px 40px; }
+  section { margin-bottom: 18px; }
+  h2 { font-size: 12px; color: #8b93a5; font-weight: 500; margin: 0 0 6px; text-transform: uppercase; letter-spacing: .8px; }
+  .caption { padding: 4px 2px 0; color: #9aa3b5; }
+  .view { border: 1px solid #232936; background: #0b0d12; }
+  canvas { display: block; width: 100%; height: auto; }
+  .sheet { position: relative; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .row .caption b { color: #cfd6e4; font-weight: 600; }
+  .row .caption.sel b { color: #7fe0a5; }
+  .row .caption { border-top: 2px solid transparent; }
+  .row .caption.sel { border-top-color: #7fe0a5; }
+  .strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .note { color: #8b93a5; max-width: 900px; margin: 6px 0 0; }
+  a { color: #8ab6ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Board materials — pick one</h1>
+  <div class="sub">Four candidates, lit identically with the game's rig. Click a board to choose it; drag the slider to set how loud the grain reads.</div>
+  <div class="sub">Birch and cherry are the shipped walnut <em>picture</em> recoloured (its grain, pores and figure are real; the species is a tone curve on top), so treat them as a direction, not a photograph. Marble is procedural. Say the word and the winner can be generated for real.</div>
+  <div class="knobs">
+    <label>grain prominence</label>
+    <input id="grain" type="range" min="0.25" max="2.5" step="0.05" value="1" />
+    <span class="val" id="grainVal">1.00</span>
+    <span class="busy" id="busy"></span>
+    <span class="pick" id="pick"></span>
+  </div>
+</header>
+<main>
+  <section class="sheet">
+    <h2>candidates — near-top-down, key light upper-left (the game's framing)</h2>
+    <canvas class="view" id="sheetBox"></canvas>
+    <div class="row" id="caps"></div>
+  </section>
+
+  <section>
+    <h2>close-up of the selected board — grazing light, drawn about 1:1 with the picture's texels</h2>
+    <canvas class="view" id="closeBox"></canvas>
+  </section>
+
+  <section>
+    <h2 id="stripTitle">grain prominence — same board at 0.4×, 1× and 1.8×</h2>
+    <div class="strip" id="stripRow">
+      <canvas class="view" id="stripBox0"></canvas>
+      <canvas class="view" id="stripBox1"></canvas>
+      <canvas class="view" id="stripBox2"></canvas>
+    </div>
+    <p class="note">
+      Slider and selection are in the URL (<code>?pick=…&amp;grain=…&amp;size=…</code>), so a state can be
+      shared or reloaded. Sizes are the texture size: <code>?size=1024</code> is the default, 512 is
+      faster and softer.
+    </p>
+  </section>
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+import { BOARD_MATERIALS, setBoardPicture, boardBand } from '../src/render/board-materials.js';
+import { loadImage } from '../src/render/wood-image.js';
+
+const params = new URLSearchParams(location.search);
+const SIZE = Number(params.get('size') || 1024);
+let grain = Number(params.get('grain') || 1);
+let selected = BOARD_MATERIALS.some((m) => m.id === params.get('pick')) ? params.get('pick') : 'cherry';
+
+const glow = (hex) => new THREE.Color(hex);
+
+//  The shipped board, downscaled for the preview: 768 px across carries every pore the views can
+//  show at this size and keeps a slider drag to a fraction of a second instead of several.
+const PREVIEW_EDGE = Number(params.get('source') || 768);
+let pictureStatus = 'fields (no picture loaded)';
+try {
+  const img = await loadImage(new URL('../assets/wood-board.png', import.meta.url));
+  const k = PREVIEW_EDGE / img.naturalWidth;
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * k);
+  c.height = Math.round(img.naturalHeight * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  //  The sheet gets the downscale (fast, and the boards there are small); the close-ups get a
+  //  native-resolution band of the original, which is the only way to see the real relief.
+  setBoardPicture(c, { bandSource: img });
+  pictureStatus = `picture ${img.naturalWidth}x${img.naturalHeight}, band at 1:1`;
+} catch (err) {
+  console.warn('wood-board.png unavailable, timber candidates fall back to the procedural fields:', err.message);
+}
+const BAND = boardBand();
+
+// --- one renderer, moved between views ------------------------------------------------------
+//  One renderer, copied into each view's own 2D canvas: a WebGL canvas can only live in one
+//  place at a time, and the strip needs three pictures of the same scene at once.
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+
+/**
+ * A plane whose UVs are *board* coordinates, exactly as the game's slab is: the wood projection
+ * is `uv = (x, -z)` in board units, so a preview that sets the same UVs samples the same way.
+ */
+function boardPlane(w, h) {
+  const g = new THREE.PlaneGeometry(w, h, 1, 1);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) - 0.5) * w, (uv.getY(i) - 0.5) * h);
+  uv.needsUpdate = true;
+  g.rotateX(-Math.PI / 2);
+  return g;
+}
+
+/** The game's lighting rig, so a candidate is judged under the light it would actually live in. */
+function lit(scene) {
+  const key = new THREE.DirectionalLight(0xfff2e0, 2.6);
+  key.position.set(-6, 9, 5);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x9fc4ff, 0.5);
+  rim.position.set(-8, 7, -9);
+  scene.add(rim);
+  scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x4a3a2a, 0.7));
+  scene.background = glow(0x0b0d12);
+  return scene;
+}
+
+const materials = new Map();
+for (const m of BOARD_MATERIALS) {
+  materials.set(m.id, new THREE.MeshStandardMaterial({ roughness: m.roughness, metalness: m.metalness }));
+}
+
+// --- the contact sheet: all four boards in a row, one camera ---------------------------------
+const SHEET_W = 6;
+const SHEET_H = 4.5;
+const GAP = 1.4;
+const sheetScene = lit(new THREE.Scene());
+const slabOf = new Map();
+BOARD_MATERIALS.forEach((m, i) => {
+  const mesh = new THREE.Mesh(boardPlane(SHEET_W, SHEET_H), materials.get(m.id));
+  mesh.position.x = (i - (BOARD_MATERIALS.length - 1) / 2) * (SHEET_W + GAP);
+  sheetScene.add(mesh);
+  slabOf.set(m.id, mesh);
+});
+const sheetCam = new THREE.PerspectiveCamera(30, 1152 / 420, 0.1, 200);
+sheetCam.position.set(0, 30, 4.7); // ~9 degrees off vertical, the game's own camera angle
+sheetCam.lookAt(0, 0, 0);
+
+/**
+ * A plane carrying the board's own UVs across a *band* of the picture rather than the whole board:
+ * uv = (x, uvY0 + t*spanY), which is the range the band's maps are placed at. See `boardBand`.
+ */
+function bandPlane(spanX, spanY, uvY0) {
+  const g = new THREE.PlaneGeometry(spanX, spanY, 1, 1);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) {
+    uv.setXY(i, (uv.getX(i) - 0.5) * spanX, uvY0 + uv.getY(i) * spanY);
+  }
+  uv.needsUpdate = true;
+  g.rotateX(-Math.PI / 2);
+  return g;
+}
+
+// --- close-up: the selected board, grazing light ---------------------------------------------
+const closeScene = lit(new THREE.Scene());
+//  Its own material: the close-up carries the crop's maps, while the sheet keeps the whole-board
+//  ones, and sharing one material would make the sheet's selected board show the crop.
+const closeMat = new THREE.MeshStandardMaterial({ roughness: 0.66, metalness: 0.04 });
+const closeMesh = new THREE.Mesh(bandPlane(BAND.spanX, BAND.spanY, BAND.uvY0), closeMat);
+closeScene.add(closeMesh);
+//  Framed so the band is drawn about 1:1 with the picture's own texels: 16 board units across
+//  1152 px is 72 px per unit against the picture's 96, so nothing here is invented by the
+//  renderer. That is the difference between judging grain and judging interpolation.
+const closeCam = new THREE.PerspectiveCamera(26, 1152 / 430, 0.05, 100);
+closeCam.position.set(0, BAND.spanY * 3.6, BAND.spanY * 6.2);
+closeCam.lookAt(0, 0.15, 0);
+
+// --- grain strip: the selected board at three prominences -------------------------------------
+const STRIP_GRAINS = [0.4, 1, 1.8];
+const stripScene = lit(new THREE.Scene());
+const stripMats = STRIP_GRAINS.map((g, i) => {
+  const m = new THREE.MeshStandardMaterial({ roughness: 0.66, metalness: 0.04 });
+  const third = BAND.spanX / 3;
+  const mesh = new THREE.Mesh(bandPlane(third, BAND.spanY, BAND.uvY0), m);
+  mesh.position.x = (i - 1) * third;
+  stripScene.add(mesh);
+  return m;
+});
+//  One camera per cell, framing that cell's own board: three pictures of one scene, which is what
+//  the strip is - the same board at three prominences, side by side to drag a slider against.
+const stripCams = STRIP_GRAINS.map((g, i) => {
+  const cam = new THREE.PerspectiveCamera(26, 380 / 260, 0.05, 100);
+  const third = BAND.spanX / 3;
+  cam.position.set((i - 1) * third, BAND.spanY * 3.1, BAND.spanY * 5.1);
+  cam.lookAt((i - 1) * third, 0.15, 0);
+  return cam;
+});
+
+// --- captions ----------------------------------------------------------------------------------
+const caps = document.getElementById('caps');
+const capEls = new Map();
+for (const m of BOARD_MATERIALS) {
+  const d = document.createElement('div');
+  d.className = 'caption';
+  d.innerHTML = `<b>${m.label}</b> — ${m.note}`;
+  d.style.cursor = 'pointer';
+  d.addEventListener('click', () => select(m.id));
+  caps.appendChild(d);
+  capEls.set(m.id, d);
+}
+
+// --- building ----------------------------------------------------------------------------------
+//  Main and strip keep separate lists: a rebuild of one must never dispose a texture the other
+//  is still drawing with (and the strip is rebuilt on a longer debounce than the main maps).
+let mainTextures = [];
+let stripTextures = [];
+let busyTimer = 0;
+
+
+
+/** Swap one material's maps in place, keeping any handle we have to free afterwards. */
+function setMaps(mat, maps) {
+  mat.map = maps.map;
+  mat.normalMap = maps.normalMap;
+  mat.roughnessMap = maps.roughnessMap;
+  mat.needsUpdate = true;
+}
+
+function buildMain() {
+  const t0 = performance.now();
+  let fresh = [];
+  for (const m of BOARD_MATERIALS) {
+    const maps = m.mapsFor({ grain, size: SIZE });
+    setMaps(materials.get(m.id), maps);
+    fresh.push(maps.map, maps.normalMap, maps.roughnessMap);
+  }
+  for (const t of mainTextures) t.dispose();
+  mainTextures = fresh;
+  return performance.now() - t0;
+}
+
+/** The strip is three extra field read-outs of the selected board; built after the drag settles. */
+function buildStrip() {
+  const spec = BOARD_MATERIALS.find((m) => m.id === selected);
+  let fresh = [];
+  STRIP_GRAINS.forEach((g, i) => {
+    const maps = spec.cropMapsFor({ grain: g }) ?? spec.mapsFor({ grain: g, size: 512 });
+    setMaps(stripMats[i], maps);
+    stripMats[i].roughness = spec.roughness;
+    fresh.push(maps.map, maps.normalMap, maps.roughnessMap);
+  });
+  //  The selected board's own close-up, at the same native resolution as the strip.
+  const closeMaps = spec.cropMapsFor({ grain }) ?? spec.mapsFor({ grain, size: 1024 });
+  setMaps(closeMat, closeMaps);
+  closeMat.roughness = spec.roughness;
+  closeMat.metalness = spec.metalness;
+  fresh.push(closeMaps.map, closeMaps.normalMap, closeMaps.roughnessMap);
+  for (const t of stripTextures) t.dispose();
+  stripTextures = fresh;
+}
+
+// --- drawing -------------------------------------------------------------------------------------
+const views = [
+  { box: 'sheetBox', scene: sheetScene, cam: sheetCam, w: 1152, h: 420 },
+  { box: 'closeBox', scene: closeScene, cam: closeCam, w: 1152, h: 430 },
+  ...stripCams.map((cam, i) => ({ box: `stripBox${i}`, scene: stripScene, cam, w: 380, h: 260 })),
+];
+
+function draw() {
+  for (const v of views) {
+    renderer.setSize(v.w, v.h, false);
+    renderer.render(v.scene, v.cam);
+    const dst = document.getElementById(v.box);
+    if (dst.width !== v.w || dst.height !== v.h) {
+      dst.width = v.w;
+      dst.height = v.h;
+    }
+    dst.getContext('2d').drawImage(renderer.domElement, 0, 0, v.w, v.h);
+  }
+  document.getElementById('grainVal').textContent = grain.toFixed(2);
+  for (const [id, el] of capEls) el.classList.toggle('sel', id === selected);
+  document.getElementById('pick').textContent = `picked: ${selected} at grain ${grain.toFixed(2)}`;
+  document.getElementById('stripTitle').textContent = `grain prominence — ${selected} at ${STRIP_GRAINS.map((g) => `${g}×`).join(', ')}`;
+}
+
+/** The whole rebuild: main maps now, the strip once the slider has been still for a moment. */
+function refresh({ strip = true } = {}) {
+  const busy = document.getElementById('busy');
+  busy.textContent = 'building…';
+  clearTimeout(busyTimer);
+  busyTimer = setTimeout(() => {
+    buildMain();
+    draw();
+    busy.textContent = '';
+    if (strip) {
+      setTimeout(() => {
+        buildStrip();
+        draw();
+        window.__ready = true;
+      }, 0);
+    }
+  }, 90);
+}
+
+// --- selection ------------------------------------------------------------------------------------
+function select(id) {
+  selected = id;
+  buildStrip();
+  reflectUrl();
+  draw();
+}
+
+const ray = new THREE.Raycaster();
+function pick(ev) {
+  const r = document.getElementById('sheetBox').getBoundingClientRect();
+  if (!r.width) return;
+  const nx = ((ev.clientX - r.left) / r.width) * 2 - 1;
+  const ny = -(((ev.clientY - r.top) / r.height) * 2 - 1);
+  ray.setFromCamera({ x: nx, y: ny }, sheetCam);
+  const hit = ray.intersectObjects([...slabOf.values()], false)[0];
+  if (!hit) return;
+  const id = [...slabOf.entries()].find(([, mesh]) => mesh === hit.object)?.[0];
+  if (id) select(id);
+}
+document.getElementById('sheetBox').addEventListener('click', pick);
+
+// --- knobs and URL ----------------------------------------------------------------------------------
+const slider = document.getElementById('grain');
+slider.value = String(grain);
+slider.addEventListener('input', () => {
+  grain = Number(slider.value);
+  document.getElementById('grainVal').textContent = grain.toFixed(2);
+  document.getElementById('pick').textContent = `picked: ${selected} at grain ${grain.toFixed(2)}`;
+  reflectUrl();
+  refresh();
+});
+
+function reflectUrl() {
+  const p = new URLSearchParams({ pick: selected, grain: grain.toFixed(2), size: String(SIZE) });
+  history.replaceState(null, '', `?${p}`);
+}
+
+// The page's own picker is what the agent reads back; expose it for the screenshot script too.
+window.__select = select;
+window.__setGrain = (g) => {
+  grain = g;
+  slider.value = String(g);
+  buildMain();
+  draw();
+  buildStrip();
+  draw();
+  return grain;
+};
+//  First paint: build everything (fields, three maps per candidate, the strip), then mark ready.
+//  Screenshot tooling waits on `window.__ready`; it is set again after every settled rebuild.
+window.__ready = false;
+window.__prepare = async () => {
+  document.getElementById('busy').textContent = 'building…';
+  buildMain();
+  buildStrip();
+  reflectUrl();
+  draw();
+  document.getElementById('busy').textContent = '';
+  window.__ready = true;
+};
+const bootMs = performance.now();
+window.__prepare().then(() => {
+  window.__bootMs = performance.now() - bootMs;
+});
+</script>
+</body>
+</html>

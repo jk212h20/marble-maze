@@ -1,0 +1,28 @@
+{
+  "name": "marble-maze",
+  "version": "1.0.0",
+  "description": "Marble Maze \u2014 a tilt-controlled wooden marble maze (three.js + a deterministic board-space physics engine)",
+  "main": "index.js",
+  "scripts": {
+    "test": "node tests/run.js",
+    "start": "node sim/serve.js",
+    "smoke": "node sim/smoke.mjs",
+    "tune": "node sim/tune-check.mjs",
+    "audio-check": "node sim/audio-check.mjs",
+    "bake": "node tools/bake-tuning.js",
+    "materials": "node tools/materials-shot.mjs --out docs/materials",
+    "marbles": "node tools/marbles-shot.mjs --out docs/marbles",
+    "marble-board": "node tools/marble-board-shot.mjs --out docs/marbles",
+    "marble-cost": "node tools/marble-cost.mjs",
+    "perf": "node tools/perf-profile.mjs",
+    "solve": "node tools/solve.js",
+    "panel": "node tools/panel-shot.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "three": "^0.180.0"
+  }
+}

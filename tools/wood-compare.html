@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Wood comparison</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../vendor/three/three.module.js",
+    "three/addons/": "../vendor/jsm/"
+  }
+}
+</script>
+<style>
+  body { margin: 0; background: #101218; color: #cfd6e4; font: 12px ui-monospace, monospace; }
+  .row { display: flex; gap: 8px; padding: 8px; }
+  figure { margin: 0; }
+  figcaption { padding: 4px 2px; color: #9aa3b5; }
+</style>
+</head>
+<body>
+<div class="row">
+  <figure>
+    <figcaption>A procedural (fields)</figcaption>
+    <canvas id="a" width="900" height="620"></canvas>
+  </figure>
+  <figure>
+    <figcaption>B image (Krea)</figcaption>
+    <canvas id="b" width="900" height="620"></canvas>
+  </figure>
+</div>
+<div class="row">
+  <figure>
+    <figcaption>A procedural, close up</figcaption>
+    <canvas id="ac" width="900" height="420"></canvas>
+  </figure>
+  <figure>
+    <figcaption>B image, close up</figcaption>
+    <canvas id="bc" width="900" height="420"></canvas>
+  </figure>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { woodMaps } from '../src/render/textures.js';
+import { loadImage, woodImageMaps } from '../src/render/wood-image.js';
+
+const params = new URLSearchParams(location.search);
+const reliefB = Number(params.get('reliefB') || 1.5);
+const flatB = Number(params.get('flatB') || 0.6);
+const opts = { spanX: 16, spanY: 11, relief: reliefB, flat: flatB, pores: 0.8 };
+
+// A or B can each be a picture of wood, or 'fields' for the procedural board, so the same page
+// compares a generated board against the procedural one *and* two generated boards against each
+// other (which is how a 1024 source and a 1536 one get judged on the look, not on the file size).
+const pick = async (spec) => (spec === 'fields' ? woodMaps({}) : woodImageMaps(await loadImage(spec), opts));
+const specA = params.get('imgA') || 'fields';
+const specB = params.get('imgB') || '/tools/wood-source.png';
+const mapsA = await pick(specA);
+const mapsB = await pick(specB);
+document.querySelectorAll('figcaption')[0].textContent = `A ${specA}`;
+document.querySelectorAll('figcaption')[1].textContent = `B ${specB}`;
+document.querySelectorAll('figcaption')[2].textContent = `A ${specA}, close up`;
+document.querySelectorAll('figcaption')[3].textContent = `B ${specB}, close up`;
+
+/** A plane whose UVs are board coordinates, as the slab's are. */
+function boardPlane(w, h) {
+  const g = new THREE.PlaneGeometry(w, h, 1, 1);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) - 0.5) * w, (uv.getY(i) - 0.5) * h);
+  uv.needsUpdate = true;
+  return g;
+}
+
+function build(canvasId, maps, camPos, look, fov, plane) {
+  const canvas = document.getElementById(canvasId);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(1);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x101218);
+  const mat = new THREE.MeshStandardMaterial({ ...maps, roughness: 0.72, metalness: 0.04 });
+  scene.add(new THREE.Mesh(boardPlane(plane[0], plane[1]), mat));
+  const key = new THREE.DirectionalLight(0xfff2e0, 2.6);
+  key.position.set(-6, 9, 5);
+  scene.add(key);
+  scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x4a3a2a, 0.7));
+  const rim = new THREE.DirectionalLight(0x9fc4ff, 0.5);
+  rim.position.set(-8, 7, -9);
+  scene.add(rim);
+  const cam = new THREE.PerspectiveCamera(fov, canvas.width / canvas.height, 0.1, 100);
+  cam.position.set(...camPos);
+  cam.lookAt(...look);
+  renderer.render(scene, cam);
+}
+
+//  Same framing for both, so the comparison is the material and nothing else.
+build('a', mapsA, [0, 22, 3.5], [0, 0, 0], 32, [16, 11]);
+build('b', mapsB, [0, 22, 3.5], [0, 0, 0], 32, [16, 11]);
+build('ac', mapsA, [0, 2.2, 3.6], [0, 0, 0], 30, [4, 4]);
+build('bc', mapsB, [0, 2.2, 3.6], [0, 0, 0], 30, [4, 4]);
+
+window.__wood = { specA, specB, reliefB, flatB };
+</script>
+</body>
+</html>

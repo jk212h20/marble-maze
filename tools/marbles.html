@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Marble lab — pick a marble</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../vendor/three/three.module.js",
+    "three/addons/": "../vendor/jsm/"
+  }
+}
+</script>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #101218; color: #cfd6e4; font: 12px/1.5 ui-monospace, SFMono-Regular, monospace; }
+  header { padding: 14px 16px 10px; border-bottom: 1px solid #232936; position: sticky; top: 0; background: #101218ee; backdrop-filter: blur(6px); z-index: 5; }
+  h1 { font-size: 15px; margin: 0 0 2px; letter-spacing: .3px; }
+  .sub { color: #8b93a5; max-width: 1000px; }
+  .knobs { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+  label { color: #9aa3b5; }
+  input[type=range] { width: 190px; accent-color: #e0a24a; }
+  .val { color: #f0c079; min-width: 3.6em; display: inline-block; }
+  .pick { color: #7fe0a5; min-width: 8em; }
+  .busy { color: #e0a24a; }
+  main { padding: 12px 16px 40px; }
+  section { margin-bottom: 18px; }
+  h2 { font-size: 12px; color: #8b93a5; font-weight: 500; margin: 0 0 6px; text-transform: uppercase; letter-spacing: .8px; }
+  .caption { padding: 4px 2px 0; color: #9aa3b5; }
+  .row { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .row .caption b { color: #cfd6e4; font-weight: 600; }
+  .row .caption.sel b { color: #7fe0a5; }
+  .row .caption { border-top: 2px solid transparent; cursor: pointer; }
+  .row .caption.sel { border-top-color: #7fe0a5; }
+  .view { border: 1px solid #232936; background: #0b0d12; }
+  canvas { display: block; width: 100%; height: auto; }
+  .note { color: #8b93a5; max-width: 1000px; margin: 6px 0 0; }
+  code { color: #f0c079; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Marble lab — pick a marble</h1>
+  <div class="sub">Every marble is real geometry: an opaque core drawn first, a transparent clearcoat shell drawn over it. No transmission pass, so it costs the same order as the shipped ball.</div>
+  <div class="sub">Click a marble to select it. The URL carries the state (<code>?pick=lantern&amp;trans=1&amp;bend=1&amp;fill=1&amp;glow=1&amp;hue=36&amp;spin=1</code>).</div>
+  <div class="sub">The game offers three of these; <code>?all=1</code> brings back the shelved clear-glass ones for experiments (they each cost a transmission pass, which is why they are shelved).</div>
+  <div class="knobs">
+    <label>transparency</label>
+    <input id="trans" type="range" min="0" max="1" step="0.02" value="1" />
+    <span class="val" id="transVal">1.00</span>
+    <label>bend</label>
+    <input id="bend" type="range" min="0" max="2" step="0.05" value="1" />
+    <span class="val" id="bendVal">1.00</span>
+    <label>solid fill</label>
+    <input id="fill" type="range" min="0.2" max="1.4" step="0.02" value="1" />
+    <span class="val" id="fillVal">1.00</span>
+    <label>lamp brightness</label>
+    <input id="glowIn" type="range" min="0" max="3" step="0.05" value="1" />
+    <span class="val" id="glowVal">1.00</span>
+    <label>lamp hue</label>
+    <input id="hueIn" type="range" min="0" max="360" step="1" value="36" />
+    <span class="val" id="hueVal">36°</span>
+    <label>spin</label>
+    <input id="spin" type="range" min="0" max="2" step="0.05" value="1" />
+    <span class="val" id="spinVal">1.00</span>
+    <span class="pick" id="pick"></span>
+    <span class="busy" id="busy"></span>
+  </div>
+</header>
+<main>
+  <section>
+    <h2>the family — near-top-down, the game's framing and light rig</h2>
+    <canvas class="view" id="sheetBox"></canvas>
+    <div class="row" id="caps"></div>
+  </section>
+
+  <section>
+    <h2>close-up of the selected marble — grazing light, so the core has parallax</h2>
+    <canvas class="view" id="heroBox"></canvas>
+    <p class="note">
+      The hero view turns the marble about its own rolling axis, which is the honest test for an
+      embedded object: if the core slides against the shell highlight as it turns, it is really
+      inside. <b>lantern</b> is the one to watch on the board — its point light is a real light in
+      the scene, so it lays a coloured pool on the timber as it rolls.
+    </p>
+  </section>
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+import { MARBLE_DESIGNS, buildMarble, designById, shippedDesigns, applyLampDials } from '../src/render/marbles.js';
+import { loadImage } from '../src/render/wood-image.js';
+import { TUNING } from '../src/engine/tuning.js';
+
+const t0 = performance.now();
+const params = new URLSearchParams(location.search);
+//  The lab shows the marbles the game offers. `?all=1` restores the shelved clear-glass designs for
+//  experiments, and asking for a shelved one by name implies it - the promise of shelving is that
+//  they are out of the way, not gone.
+const requested = params.get('pick');
+const shelvedRequested = MARBLE_DESIGNS.some((d) => d.id === requested && d.shelved);
+const showAll = params.get('all') === '1' || shelvedRequested;
+const designs = showAll ? MARBLE_DESIGNS : shippedDesigns();
+const initial = designs.some((d) => d.id === requested) ? requested : (designs[1]?.id ?? designs[0].id);
+// The three dials that decide what a marble looks like, and they are genuinely independent:
+//
+//   transp  how much light the glass passes at all (0 = a solid milky ball, 1 = glass)
+//   bend    how far the refracted ray travels through the glass, i.e. how hard it acts as a lens
+//   fill    the size of the thing inside - this is what opens up a clear window around it
+//
+// `fill` is the one that turned out to matter most. A sphere only looks like glass where the surface
+// is close to face-on to you, and that is exactly the middle of the ball; a core big enough to sit
+// there blocks the only clear part, leaving a grazing-angle ring that behaves like a mirror.
+let transLevel = Number(params.get('trans') ?? 1);
+let bendLevel = Number(params.get('bend') ?? 1);
+let fillLevel = Number(params.get('fill') ?? 1);
+let glowLevel = Number(params.get('glow') ?? 1);
+let hueLevel = Number(params.get('hue') ?? 36);
+let spinLevel = Number(params.get('spin') ?? 1);
+let picked = initial;
+
+const el = (id) => document.getElementById(id);
+const setParams = () => {
+  const u = new URL(location.href);
+  u.searchParams.set('pick', picked);
+  u.searchParams.set('trans', transLevel.toFixed(2));
+  u.searchParams.set('bend', bendLevel.toFixed(2));
+  u.searchParams.set('fill', fillLevel.toFixed(2));
+  u.searchParams.set('glow', glowLevel.toFixed(2));
+  u.searchParams.set('hue', hueLevel.toFixed(0));
+  u.searchParams.set('spin', spinLevel.toFixed(2));
+  history.replaceState(null, '', u);
+};
+
+// --- renderer ---------------------------------------------------------------------------------
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+// A tiny studio of emissive panels, baked to an env map. Glass and metal are only as good as
+// what they have to reflect, and it has to be the *same* rig the game uses.
+function environment() {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0d12);
+  const panel = (w, h, color, intensity, pos, look) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color }));
+    m.material.color.multiplyScalar(intensity);
+    m.position.set(...pos);
+    m.lookAt(...(look ?? [0, 0, 0]));
+    scene.add(m);
+  };
+  panel(9, 6, 0xfff2e0, 3.2, [-4, 7, 4]);
+  panel(7, 5, 0x9fc4ff, 0.9, [6, 5, -5]);
+  panel(10, 8, 0xffd9a0, 0.6, [0, -5, 2]);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ color: 0x241a10 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -7;
+  scene.add(floor);
+  return scene;
+}
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envRT = pmrem.fromScene(environment(), 0.02);
+
+// The marbles sit on the board's own timber, so a marble can be judged on what it *transmits*. A flat
+// brown plane would make clarity unjudgeable: a clear ball over a featureless surface looks the same
+// as an empty ring, because there is nothing behind it to bend. The grain is what shows the lens.
+let woodTexture = null;
+try {
+  const img = await loadImage(new URL('../assets/wood-board.png', import.meta.url));
+  woodTexture = new THREE.Texture(img);
+  woodTexture.colorSpace = THREE.SRGBColorSpace;
+  woodTexture.wrapS = THREE.RepeatWrapping;
+  woodTexture.wrapT = THREE.RepeatWrapping;
+  woodTexture.repeat.set(3, 3);
+  woodTexture.anisotropy = 4;
+  woodTexture.needsUpdate = true;
+} catch (err) {
+  console.warn('wood-board.png unavailable; the floor is plain, so refraction will be hard to see:', err.message);
+}
+
+function rig(scene, floorY = -1.02) {
+  scene.environment = envRT.texture;
+  const key = new THREE.DirectionalLight(0xfff4e2, 2.1);
+  key.position.set(7, 16, 6);
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0x9fc4ff, 0.75);
+  rim.position.set(-8, 7, -9);
+  scene.add(rim);
+  scene.add(new THREE.HemisphereLight(0xbcd0f0, 0x241a10, 0.32));
+  // The wood the marbles sit on: dark enough that the lantern's pool is unmistakable.
+  const wood = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 60),
+    woodTexture
+      ? new THREE.MeshStandardMaterial({ map: woodTexture, roughness: 0.8, metalness: 0.03 })
+      : new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 0.85, metalness: 0.03 }),
+  );
+  wood.rotation.x = -Math.PI / 2;
+  // Each view gets the floor its own marbles stand on. Getting this wrong is not cosmetic: the hero
+  // marble is scaled up, so a shared floor leaves it floating a unit above the ground, and the
+  // lantern's lamp - which falls off as 1/d squared - then looks like it does nothing at all.
+  wood.position.y = floorY;
+  wood.receiveShadow = true;
+  scene.add(wood);
+  return scene;
+}
+
+// --- the sheet: one marble per design in a row -------------------------------------------------
+const SHEET = rig(new THREE.Scene(), -1.0);
+const SPACING = 2.6;
+const marbles = new Map();
+const shells = [];
+designs.forEach((d, i) => {
+  const group = buildMarble(d.id);
+  matchGameLamp(group, 1);
+  group.position.x = (i - (designs.length - 1) / 2) * SPACING;
+  SHEET.add(group);
+  marbles.set(d.id, group);
+  group.traverse((o) => {
+    if (o.isMesh && o.name === 'marble-ball') shells.push({ mesh: o, base: o.material.thickness });
+  });
+});
+// High enough that the outermost marbles keep their whole bodies in frame: seven balls on 2.6
+// spacing is 15.6 wide, and a camera sized to the gaps crops the two ends.
+const sheetCam = new THREE.PerspectiveCamera(28, 1152 / 360, 0.1, 200);
+sheetCam.position.set(0, 20.5, 6.2);
+sheetCam.lookAt(0, -0.1, 0);
+
+// --- the hero: the selected marble, big, turning on its rolling axis ----------------------------
+const HERO = rig(new THREE.Scene(), 0);
+const heroHolder = new THREE.Group();
+HERO.add(heroHolder);
+const HERO_SCALE = 1.9;
+
+/**
+ * Match an embedded lamp to the game's.
+ *
+ * A point light's illuminance on the floor falls as 1/d squared, and d is set by the marble's radius:
+ * the lab draws marbles 1 (or HERO_SCALE) units across where the game draws them `TUNING.ballR`, so an
+ * unscaled lamp reads (radius / ballR) squared too weak here - about 14x on the sheet and 49x on the
+ * hero. That is not a subtle difference, it is the difference between "the lamp works" and "the lamp
+ * does nothing", and the lab said the latter until this was found. Scale the lamp, not the floor.
+ */
+function matchGameLamp(group, localRadius) {
+  const factor = (localRadius / (TUNING.ballR || 1)) ** 2;
+  group.traverse((o) => {
+    if (!o.isLight) return;
+    o.intensity *= factor;
+    o.userData.base = o.intensity;
+  });
+  return factor;
+}
+// Framed on the marble's own centre (it sits at y = HERO_SCALE), with room for its whole body: at
+// radius 1.9 the ball is 3.8 tall, and a camera aimed at the origin would crop its top off.
+const heroCam = new THREE.PerspectiveCamera(30, 1152 / 460, 0.05, 100);
+heroCam.position.set(0, 5.6, 7.4);
+heroCam.lookAt(0, HERO_SCALE * 0.9, 0);
+let hero = null;
+
+function setHero(id) {
+  if (hero) {
+    heroHolder.remove(hero);
+    hero.userData.dispose();
+  }
+  hero = buildMarble(id);
+  hero.scale.setScalar(HERO_SCALE);
+  matchGameLamp(hero, HERO_SCALE);
+  // Sit it *on* the table, not in it: at radius 1 the ball is one unit tall, so half of it is
+  // below its own origin and a hero at y=-0.15 sinks through the wood and loses the light pool.
+  hero.position.y = HERO_SCALE;
+  hero.traverse((o) => { if (o.name === 'marble-ball') o.material.__base = o.material.thickness; });
+  heroHolder.add(hero);
+}
+
+// --- controls ---------------------------------------------------------------------------------
+const applyGlassKnobs = () => {
+  // Proportional, so a design that ships a slightly deeper glass keeps its character as the dials
+  // move. `transp` scales each design's own transmission rather than forcing one value on all.
+  const set = (m, base) => {
+    m.transmission = Math.min(1, (m.userData.__trans ?? 1) * transLevel);
+    m.thickness = (base ?? 1.35) * bendLevel;
+  };
+  for (const { mesh, base } of shells) set(mesh.material, base);
+  if (hero) hero.traverse((o) => { if (o.name === 'marble-ball') set(o.material, o.material.__base); });
+  const applyFill = (group) => { if (group?.userData.core) group.userData.core.scale.setScalar(fillLevel); };
+  for (const g of marbles.values()) applyFill(g);
+  applyFill(hero);
+};
+const applyGlow = () => {
+  //  The glow slider *is* the lamp's brightness dial, and it goes through the same function the game
+  //  uses. Scaling light intensities by hand here would be a second mechanism that the marble's own
+  //  per-frame tick overwrites - the tick owns the light's intensity (it applies the pulse and any
+  //  lamp-off control), so anything that wants to change the lamp has to change the lamp's gain.
+  const set = (node) => applyLampDials(node, { brightness: glowLevel, hueDegrees: hueLevel });
+  for (const g of marbles.values()) set(g);
+  if (hero) set(hero);
+  //  Emissive materials that are *not* part of a lamp (a design with no lamp at all) still answer
+  //  to the slider, so the lab's control does something on every marble rather than dying silently.
+  const scale = (node) => {
+    node.traverse((o) => {
+      if (node.userData.lamp) return;
+      if (o.material?.emissiveIntensity != null && o.material.userData?.baseEmissive == null) {
+        o.material.userData.baseEmissive = o.material.emissiveIntensity;
+      }
+      if (o.material?.emissiveIntensity != null) o.material.emissiveIntensity = o.material.userData.baseEmissive * glowLevel;
+    });
+  };
+  for (const g of marbles.values()) scale(g);
+  if (hero) scale(hero);
+};
+
+const trans = el('trans');
+const bend = el('bend');
+const fill = el('fill');
+const glowIn = el('glowIn');
+const hueIn = el('hueIn');
+const spin = el('spin');
+trans.value = transLevel;
+bend.value = bendLevel;
+fill.value = fillLevel;
+glowIn.value = glowLevel;
+spin.value = spinLevel;
+el('transVal').textContent = transLevel.toFixed(2);
+el('bendVal').textContent = bendLevel.toFixed(2);
+el('fillVal').textContent = fillLevel.toFixed(2);
+el('glowVal').textContent = glowLevel.toFixed(2);
+el('hueVal').textContent = `${hueLevel}\u00b0`;
+hueIn.value = hueLevel;
+el('spinVal').textContent = spinLevel.toFixed(2);
+
+for (const { mesh } of shells) {
+  mesh.material.__base = mesh.material.thickness;
+  mesh.material.userData.__trans = mesh.material.transmission;
+}
+// `applyGlow` scales every light from its own base, so the bases have to be the matched values.
+for (const g of marbles.values()) {
+  g.traverse((o) => { if (o.isLight) o.userData.base = o.intensity; });
+}
+
+const pick = (id) => {
+  picked = id;
+  setHero(id);
+  for (const [mid, g] of marbles) {
+    const on = mid === id;
+    g.userData.selected = on;
+  }
+  document.querySelectorAll('#caps .caption').forEach((c) => c.classList.toggle('sel', c.dataset.id === id));
+  el('pick').textContent = `selected: ${designById(id).name}`;
+  document.title = `Marble lab — ${designById(id).name}`;
+  applyGlassKnobs();
+  applyGlow();
+  if (frozen) drawFrame();
+  setParams();
+};
+
+const caps = el('caps');
+for (const d of designs) {
+  const cap = document.createElement('div');
+  cap.className = 'caption';
+  cap.dataset.id = d.id;
+  cap.innerHTML = `<b style="color:${d.tone}">${d.name}</b><br>${d.blurb}`;
+  cap.addEventListener('click', () => pick(d.id));
+  caps.appendChild(cap);
+}
+
+trans.addEventListener('input', () => { transLevel = Number(trans.value); el('transVal').textContent = transLevel.toFixed(2); applyGlassKnobs(); setParams(); });
+bend.addEventListener('input', () => { bendLevel = Number(bend.value); el('bendVal').textContent = bendLevel.toFixed(2); applyGlassKnobs(); setParams(); });
+fill.addEventListener('input', () => { fillLevel = Number(fill.value); el('fillVal').textContent = fillLevel.toFixed(2); applyGlassKnobs(); setParams(); });
+glowIn.addEventListener('input', () => { glowLevel = Number(glowIn.value); el('glowVal').textContent = glowLevel.toFixed(2); applyGlow(); setParams(); });
+hueIn.addEventListener('input', () => { hueLevel = Number(hueIn.value); el('hueVal').textContent = `${hueLevel}\u00b0`; applyGlow(); setParams(); });
+spin.addEventListener('input', () => { spinLevel = Number(spin.value); el('spinVal').textContent = spinLevel.toFixed(2); setParams(); });
+
+// --- draw -------------------------------------------------------------------------------------
+function drawInto(canvas, scene, camera) {
+  const w = canvas.clientWidth || 1152;
+  const h = canvas.clientHeight || Math.round((w * camera.aspect) / (camera.aspect || 1)) || 400;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.render(scene, camera);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(renderer.domElement, 0, 0);
+}
+
+// Two overlapping draws from one WebGL canvas: copy each out immediately before the next.
+const sheetBox = el('sheetBox');
+const heroBox = el('heroBox');
+
+let started = performance.now();
+let clock = 0;
+let frozen = false;
+pick(initial);
+setParams();
+
+/** Pose every marble for time `t`. */
+function pose(t) {
+  // Roll each marble about the board's x and z, the way the engine spins the real one. The
+  // inner designs get their own slow turn on top via userData.tick.
+  for (const [id, g] of marbles) {
+    g.rotation.x = t * 0.7 * spinLevel;
+    g.rotation.z = t * 0.42 * spinLevel;
+    g.userData.tick?.(t, g);
+    g.position.y = id === picked ? 0.06 : 0;
+  }
+  hero.rotation.x = t * 0.8 * spinLevel;
+  hero.rotation.z = t * 0.5 * spinLevel;
+  hero.userData.tick?.(t, hero);
+}
+
+function drawFrame() {
+  drawInto(sheetBox, SHEET, sheetCam);
+  drawInto(heroBox, HERO, heroCam);
+  busy.textContent = `${Math.round(clock * 10) / 10}s${frozen ? ' (frozen)' : ''}`;
+  window.__frames = (window.__frames ?? 0) + 1;
+}
+
+function loop(now) {
+  if (frozen) return;
+  clock = (now - started) / 1000;
+  pose(clock);
+  drawFrame();
+  requestAnimationFrame(loop);
+}
+const busy = el('busy');
+requestAnimationFrame(loop);
+
+/**
+ * Freeze the turntable. A screenshot tool needs a still canvas — an element screenshot waits for
+ * the target to stop changing, and a spinning marble never does — so the lab offers this instead
+ * of the tool having to guess.
+ */
+/**
+ * The marble currently in the hero view, so a check can drive its materials directly (the shell's
+ * `transmission` and `thickness` are the two knobs that decide what the glass does).
+ */
+window.__hero = () => hero;
+
+window.__freeze = (on = true) => {
+  frozen = !!on;
+  if (frozen) drawFrame();
+  else requestAnimationFrame(loop);
+};
+window.__frozen = () => frozen;
+
+window.__bootMs = performance.now() - t0;
+window.__pick = pick;
+window.__state = () => ({ picked, trans: transLevel, bend: bendLevel, fill: fillLevel, glow: glowLevel, hue: hueLevel, spin: spinLevel, frames: window.__frames ?? 0, designs: designs.length, all: showAll });
+// Ready once the first full frame is on both canvases, which is what a check should wait for.
+requestAnimationFrame(() => requestAnimationFrame(() => { window.__ready = true; }));
+</script>
+</body>
+</html>

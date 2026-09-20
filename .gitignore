@@ -1,0 +1,11 @@
+# Dependencies (three.js is also vendored under vendor/ for the no-build-step page)
+node_modules/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Logs / scratch
+*.log
+*.tmp
+tmp/

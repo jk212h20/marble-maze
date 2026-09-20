@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Wood preview</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../vendor/three/three.module.js",
+    "three/addons/": "../vendor/jsm/"
+  }
+}
+</script>
+<style>
+  body { margin: 0; background: #101218; color: #cfd6e4; font: 12px ui-monospace, monospace; }
+  .row { display: flex; gap: 10px; padding: 8px; align-items: flex-start; }
+  figure { margin: 0; }
+  figcaption { padding: 3px 0; color: #8b93a5; }
+  canvas { display: block; image-rendering: pixelated; border: 1px solid #262c38; }
+</style>
+</head>
+<body>
+<div class="row">
+  <figure>
+    <figcaption>albedo, tiled 2x2 (seam check)</figcaption>
+    <canvas id="tiled" width="512" height="512"></canvas>
+  </figure>
+  <figure>
+    <figcaption>normal</figcaption>
+    <canvas id="normal" width="512" height="512"></canvas>
+  </figure>
+  <figure>
+    <figcaption>roughness</figcaption>
+    <canvas id="rough" width="512" height="512"></canvas>
+  </figure>
+</div>
+<div class="row">
+  <figure>
+    <figcaption>full board, key light upper-left, camera 9 deg off vertical (game framing)</figcaption>
+    <canvas id="board" width="1000" height="330"></canvas>
+  </figure>
+</div>
+<div class="row">
+  <figure>
+    <figcaption>close-up, grazing light: the normal map has to carry the relief here</figcaption>
+    <canvas id="close" width="1000" height="330"></canvas>
+  </figure>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { woodMaps, WOOD_SPAN } from '../src/render/textures.js';
+import { loadImage, woodImageMaps } from '../src/render/wood-image.js';
+
+const params = new URLSearchParams(location.search);
+const timber = {
+  base: params.get('base') || '#96602f',
+  dark: params.get('dark') || '#3f2410',
+  light: params.get('light') || '#c98f52',
+  relief: Number(params.get('relief') || 1),
+};
+const t0 = performance.now();
+// ?img=<url> swaps the source: the same three maps, from a picture instead of from fields.
+const imgUrl = params.get('img');
+const maps = imgUrl
+  ? woodImageMaps(await loadImage(imgUrl), {
+      spanX: 16,
+      spanY: 11,
+      relief: Number(params.get('relief') || 1),
+      flat: Number(params.get('flat') || 0.85),
+      pores: Number(params.get('pores') || 1),
+      tone: params.get('tone') ? Number(params.get('tone')) : null,
+    })
+  : woodMaps(timber);
+const buildMs = performance.now() - t0;
+
+const blit = (id, tex) => {
+  const dst = document.getElementById(id);
+  const src = tex.image;
+  const k = Math.min(512 / src.width, 512 / src.height);
+  dst.width = Math.round(src.width * k);
+  dst.height = Math.round(src.height * k);
+  const ctx = dst.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(src, 0, 0, dst.width, dst.height);
+};
+blit('normal', maps.normalMap);
+blit('rough', maps.roughnessMap);
+// 2x2 albedo: a seam would show as a discontinuity down the middle and across the centre.
+// Only meaningful for a tile; an image source covers the board once and is clamped.
+const tiled = document.getElementById('tiled');
+const tctx = tiled.getContext('2d');
+tctx.imageSmoothingEnabled = false;
+if (maps.map.wrapS === THREE.RepeatWrapping) {
+  for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) tctx.drawImage(maps.map.image, x * 256, y * 256, 256, 256);
+} else {
+  tctx.drawImage(maps.map.image, 0, 0, 512, 512);
+  document.querySelector('#tiled').previousElementSibling.textContent = 'albedo (one image, clamped - no tile to check)';
+}
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(1000, 330, false);
+renderer.setPixelRatio(1);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x101218);
+
+const key = new THREE.DirectionalLight(0xfff2e0, 2.6);
+key.position.set(-6, 9, 5);
+scene.add(key);
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x4a3a2a, 0.7));
+const rim = new THREE.DirectionalLight(0x9fc4ff, 0.5);
+rim.position.set(-8, 7, -9);
+scene.add(rim);
+
+/**
+ * A plane whose UVs are *board* coordinates, the way the slab's are, so the texture lands at
+ * the scale the game draws it: board units 1:1, WOOD_SPAN units per tile.
+ */
+function boardPlane(w, h) {
+  const g = new THREE.PlaneGeometry(w, h, 1, 1);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) {
+    // Geometry is built in x/y, so 0..1 across x becomes -w/2..w/2 in board x; same for z.
+    uv.setXY(i, (uv.getX(i) - 0.5) * w, (uv.getY(i) - 0.5) * h);
+  }
+  uv.needsUpdate = true;
+  return g;
+}
+
+const mat = new THREE.MeshStandardMaterial({ ...maps, roughness: 0.72, metalness: 0.04 });
+
+const boardCanvas = document.getElementById('board');
+const boardRenderer = new THREE.WebGLRenderer({ canvas: boardCanvas, antialias: true });
+boardRenderer.setPixelRatio(1);
+const boardScene = new THREE.Scene();
+boardScene.background = scene.background;
+boardScene.add(new THREE.Mesh(boardPlane(16, 11), mat));
+const boardCam = new THREE.PerspectiveCamera(32, 1000 / 330, 0.1, 100);
+boardCam.position.set(0, 22, 3.5); // ~9 degrees off vertical, as the game's camera is
+boardCam.lookAt(0, 0, 0);
+for (const l of [key, rim]) {
+  const c = l.clone();
+  boardScene.add(c);
+}
+boardScene.add(new THREE.HemisphereLight(0xbfd4ff, 0x4a3a2a, 0.7));
+boardRenderer.render(boardScene, boardCam);
+// put the renderer back on the close-up canvas
+renderer.domElement.remove();
+boardCanvas.parentElement.appendChild(renderer.domElement);
+
+const closeScene = new THREE.Scene();
+closeScene.background = scene.background;
+closeScene.add(new THREE.Mesh(boardPlane(6, 6), mat));
+const closeCam = new THREE.PerspectiveCamera(26, 1000 / 330, 0.1, 100);
+closeCam.position.set(0, 3.4, 5.4);
+closeCam.lookAt(0, 0, 0);
+for (const l of [key, rim]) closeScene.add(l.clone());
+closeScene.add(new THREE.HemisphereLight(0xbfd4ff, 0x4a3a2a, 0.7));
+renderer.render(closeScene, closeCam);
+
+window.__wood = { buildMs, timber, source: imgUrl || 'procedural' };
+</script>
+</body>
+</html>

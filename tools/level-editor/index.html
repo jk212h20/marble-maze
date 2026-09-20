@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marble Maze level editor</title>
+<link rel="stylesheet" href="./index.css">
+</head>
+<body>
+<noscript style="color:#e6e9ef;font:13px sans-serif;padding:20px">This page needs JavaScript.</noscript>
+<script type="module">
+  import("./editor.js").catch((err) => {
+    document.body.innerHTML = "";
+    const pre = document.createElement("pre");
+    pre.style.cssText = "padding:24px;font:13px ui-monospace,monospace;color:#ff8a70;white-space:pre-wrap";
+    pre.textContent = "The editor could not load:\n\n" + err.message + "\n\nIt reads src/engine/*.js directly, so a game module that is mid-edit (a syntax error in levels.js, pathfind.js, silhouette.js, rose.js or constants.js) will stop it loading. Fix or wait for that edit, then reload.";
+    document.body.append(pre);
+  });
+</script>
+</body>
+</html>
