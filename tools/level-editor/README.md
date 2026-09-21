@@ -79,9 +79,26 @@ full `index.html` path — `/tools/level-editor/` on its own is a directory, not
   authored-data smell the engine would otherwise paper over silently (a pit painted over a
   wall cell becomes a hole through that wall, a plate naming a gate that does not exist, and
   so on).
-- **Playability comes from the geometry, not from the solver.** *Solve* is **disabled** (the
-  button is present, greyed, and marked `solver off`, with the reason spelled out in the Rules
-  panel). See *Why the solver is off* below.
+- **Playability comes from the geometry, not from the solver.** There is no Solve button; the
+  Rules panel carries a `solver off` badge and the reason is spelled out below it. See *Why the
+  solver is off*.
+- **Undo / redo.** The header has *undo* and *redo* (`⌘Z` / `⇧⌘Z`, or `Ctrl+Z` / `Ctrl+Y`). A
+  canvas drag is one step — painting a stroke or dragging an obstacle undoes in one go — and a
+  slider dragged across many `input` events is coalesced into one, so the steps match what you
+  think of as one edit. Loading a level, importing, or starting a new draft is a step too.
+- **One live verdict in the header.** The status chip reads `✓ draft is valid`, `! n warnings` or
+  `✗ n errors` from the same ledger the Rules panel shows; clicking it scrolls to that ledger. The
+  bar under the board repeats the counts next to the cursor readout, where the work is.
+- **Guidance where the cursor is.** Under the board, a chip names the **active tool** and the rest
+  of the bar says what it will do, plus a live `at x, y · <ground>` readout naming whatever the
+  pointer is over (floor, wall, ice, pressure button, pit…). The right column's section headers
+  (**Rules**, **Obstacles**, **Properties**, **Export**, **Import**, **Saved drafts**) are sticky,
+  so you always know which section you are scrolling through, and the Obstacles/Properties headers
+  carry a count and the selected object's name.
+- **Keyboard shortcuts are discoverable.** Every paint tool shows its key on the button (and in
+  its tooltip); a **Keys** list at the bottom of the left column has the rest: `o` pits, `g` the
+  goal cup, `e` erase, `Esc` select/edit (and to clear a selection), `⌫`/`Del` deletes the selected
+  object, and `⌘Z`/`⇧⌘Z` undo/redo. The id field warns when it collides with a shipped level id.
 - **Open an existing level** from *Start from* (level 1, or any level in
   `src/engine/levels.js`) and edit it.
 - **Export** a paste-ready `LEVELS` entry, or JSON. The working draft autosaves into one

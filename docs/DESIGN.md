@@ -131,6 +131,36 @@ level that half works.
 | One-way flap | Blocks from one side only | A hinged brass leaf in a routed kerf, leaning the way a marble from the allowed side pushes it, with an arrow on the floor pointing the way through |
 | Teleport pads | Move the marble to the twin pad, keeping its speed | Cyan disc that re-arms when cleared |
 
+## Steady fields have a ceiling, and it is arithmetic
+
+A belt, a fan and a magnet apply a *steady* acceleration the player cannot switch off. The board
+can only answer with `g · sin(maxTilt) · roll` — the shipped numbers give
+`9.81 · sin(0.30) · 5/7 ≈ 2.07 u/s²`. So a field stronger than that along the route cannot be
+beaten by tilting at all, however well it is steered, and the level is not "hard", it is
+impossible:
+
+| Field | Shipped | Above the ceiling? |
+| --- | --- | --- |
+| Fan / vent (`VENT_ACCEL`) | 3.2 u/s² | **yes** — a full-strength vent facing the visitor is unfinishable |
+| Magnet (`MAGNET_STRENGTH`, up to 6) | 3.0 u/s² | **yes**, at close range (the pull falls off with distance) |
+| Belt (`CONVEYOR_SPEED`) | 1.5 u/s | no — a belt sets a surface *speed*, not an acceleration |
+
+Measured with the tilt autopilot on a 12×5 corridor, spawn at one end and the cup at the other:
+
+a vent at 3.2 → never finishes; at 2.0 → never finishes; at 1.0 → finishes in 10.4 s. A magnet at
+strength 6 sitting between the spawn and the cup → never finishes.
+
+Two consequences worth keeping:
+
+- **Level authoring.** A field a level needs the marble to climb must stay under the ceiling, or
+the level has to offer a route around it (the design notes already ask for a readable tell for
+invisible forces; this is the mechanical half of that question).
+- **What the autopilot can prove.** The pilot is the proof that a level is tilt-solvable, and no
+controller — integral action, feed-forward, anything — can make it climb a field above that
+ceiling, because the physics forbids it. So a level built around a strong field is proven by a
+scripted plan, not by the pilot, and `PLAYABILITY` in `src/engine/mechanics.js` records which
+mechanics rest on which proof.
+
 ## Ramps
 
 A ramp is the one obstacle that changes the shape of the board instead of its behaviour, so it

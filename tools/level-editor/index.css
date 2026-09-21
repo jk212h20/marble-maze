@@ -74,7 +74,14 @@ button:hover { border-color: #4a5262; }
 button.primary { background: #1f6b52; border-color: #2c8a6a; }
 button.primary:hover { background: #25805f; }
 button:disabled { opacity: 0.45; cursor: default; }
-button[aria-pressed="true"] { border-color: var(--accent); background: #223530; }
+/*  The active tool has to be unmistakable — a faint border is not enough when a 20-button palette
+ *  sits next to the board. Accent border, tinted fill, and an inset bar down the left edge. */
+button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: #223530;
+  color: #eafff6;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
 
 main {
   flex: 1;

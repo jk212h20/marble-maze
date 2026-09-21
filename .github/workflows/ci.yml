@@ -1,11 +1,12 @@
 name: checks
 
-# Two jobs, because they have different needs: the node checks run anywhere node does, and the
-# browser checks need a Chromium with software GL. Keeping them separate means a flaky browser
-# job never hides a real engine failure, and the fast job stays fast (~5 s).
+# Three jobs, because they have different needs and very different costs.
 #
-# Neither job needs a GPU, a build step, or a server started by hand: sim/check-browser.mjs
-# starts the dev server itself on an ephemeral port.
+# The node checks run anywhere node does and take seconds. The browser checks need a Chromium with
+# software GL, and on a 2-core runner one smoke check alone measured **7m35s** (versus about a
+# minute on this laptop), so they are split across two runners to keep the wall time down and to
+# make a failure say which check it was instead of "the browser step". Neither needs a GPU, a build
+# step, or a server started by hand: sim/check-browser.mjs starts one on an ephemeral port.
 
 on:
   push:
@@ -26,10 +27,15 @@ jobs:
         run: npm test
       - name: every shipped level through the editor's rules
         run: npm run levels
+      - name: the counts in the docs match the suite
+        run: node tools/gen-status.mjs --check
 
-  browser:
-    name: browser checks
+  smoke:
+    name: browser smoke
     runs-on: ubuntu-latest
+    # Bounded, so a stall fails visibly rather than sitting in the log. Sized for the runner's
+    # software renderer with room to spare: this check is the slowest of the four.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,11 +45,8 @@ jobs:
       - run: npm ci
       - name: install Chromium (software GL)
         run: npx playwright install --with-deps chromium
-      # A bounded step, so a stall fails visibly instead of sitting in the log: the checks boot a
-      # software-GL browser several times, and the runner is much slower than a laptop.
-      - name: smoke, tuning panel, audio and renderer parity
-        timeout-minutes: 20
-        run: npm run check:browser
+      - name: loads the page, drives it, times frames
+        run: npm run check:browser -- smoke
       - name: upload screenshots when the smoke check fails
         if: failure()
         uses: actions/upload-artifact@v4
@@ -52,3 +55,19 @@ jobs:
           path: /tmp/marblemaze-shots
           if-no-files-found: ignore
           retention-days: 7
+
+  browser:
+    name: browser checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: install Chromium (software GL)
+        run: npx playwright install --with-deps chromium
+      - name: tuning panel, audio and renderer parity
+        run: npm run check:browser -- tune audio parity

@@ -118,11 +118,11 @@ function buildUI() {
       label('start from', h('select', { id: 'start-from' })),
       h('button', { id: 'btn-new', title: 'Start a blank level', text: 'new' }),
       h('a', { id: 'btn-play', class: 'play', href: '../../index.html?draft=session', title: 'Play the draft you are editing in the game itself', text: 'play this draft' }),
-      h('button', { id: 'btn-undo', title: 'Undo (⌘Z / Ctrl+Z)', text: '↶ undo' }),
-      h('button', { id: 'btn-redo', title: 'Redo (⇧⌘Z / Ctrl+Y)', text: 'redo ↷' }),
       h('span', { class: 'grow' }),
-      //  One live status chip instead of a badge plus a dead button: it says what is wrong with
-      //  the draft right now, and clicking it jumps to the ledger that explains it.
+      //  Edit actions sit together on the right, with the verdict they feed: undo/redo, then the
+      //  live status chip (a badge and a dead button used to live here), then re-validate.
+      h('button', { id: 'btn-undo', title: 'Undo (⌘Z / Ctrl+Z)', text: 'undo ↺' }),
+      h('button', { id: 'btn-redo', title: 'Redo (⇧⌘Z / Ctrl+Y)', text: 'redo ↻' }),
       h('button', { id: 'status-chip', class: 'chip', title: 'Jump to the rules that produced this verdict', text: '—' }),
       h('button', { id: 'btn-validate', title: 'Re-run every rule against the draft', text: 're-validate' }),
     ),
@@ -180,9 +180,9 @@ function buildUI() {
         h('p', { class: 'hint', id: 'solver-note' }, SOLVER_NOTE),
         label('show passing checks', h('input', { type: 'checkbox', id: 'chk-showoks' })),
         h('ul', { class: 'ledger', id: 'ledger' }),
-        h('h2', { class: 'sticky', text: 'Obstacles' }),
+        h('h2', { class: 'sticky' }, 'Obstacles ', h('span', { class: 'badge', id: 'obj-count', text: '0' })),
         h('div', { class: 'objlist', id: 'object-list' }),
-        h('h2', { class: 'sticky', text: 'Properties' }),
+        h('h2', { class: 'sticky' }, 'Properties ', h('span', { class: 'badge', id: 'prop-kind', text: '—' })),
         h('div', { class: 'props', id: 'props' }),
         h('h2', { class: 'sticky' }, 'Export ', h('span', { class: 'hint', id: 'export-info' })),
         h('div', { class: 'tabs' },
@@ -1090,11 +1090,16 @@ function renderObjects() {
     p.textContent = 'No obstacles placed yet. Use the Marble tool to drop one, or click the board to start.';
     root.appendChild(p);
   }
+  //  A count of everything placed, so the list has a size at a glance without scrolling it.
+  let total = spawnsOf(state.draft).length + state.draft.pits.length + (state.draft.plates?.length ?? 0);
+  for (const [listName] of OBJECT_LISTS) total += state.draft[listName]?.length ?? 0;
+  el['obj-count'].textContent = String(total);
 }
 
 function renderProps() {
   const root = el['props'];
   root.innerHTML = '';
+  el['prop-kind'].textContent = state.selection ? selectionLabel() : '—';
   if (!state.selection) {
     const p = document.createElement('div');
     p.className = 'hint';
@@ -1513,7 +1518,8 @@ function hint() {
     const step = state.snap === 1 ? 'whole cells' : `${state.snap} of a cell`;
     text = `Material plate (${t.mat}), edges snapped to ${step}. Drag a rectangle in cell-EDGE coordinates — ${state.snap === 1 ? 'so its edges land on cell boundaries' : 'so an eighth of a cell is a legitimate edge'}. A plate may cover a pit: the pit is cut out of it, not erased by it.`;
   } else if (t.kind === 'cell') {
-    text = `Painting ${PAINT_CELLS.find((p) => p.id === t.id)?.label}. Drag to paint; right-drag or hold Alt to erase.`;
+    const k = PAINT_KEY[t.id];
+    text = `Painting ${PAINT_CELLS.find((p) => p.id === t.id)?.label}${k ? ` (key: ${k} — the paint keys are f w i s t c v)` : ''}. Drag to paint; right-drag or hold Alt to erase.`;
   } else if (t.kind === 'object') {
     const step = state.snap === 1 ? 'cell centres' : `${state.snap} of a cell`;
     if (t.id === 'spawn') {
@@ -1527,7 +1533,7 @@ function hint() {
   } else if (t.kind === 'erase') {
     text = 'Click or drag to erase cells back to floor and remove obstacles. Material plates are left alone — pick one with select / edit to move or delete it.';
   } else {
-    text = 'Select: click an obstacle to edit it.';
+    text = 'Select: click an obstacle to edit it, or drag a marble, the cup or a cell obstacle to move it. Esc clears the selection, ⌫ deletes it, ⌘Z undoes.';
   }
   el['tool-hint'].textContent = text;
 }
@@ -1765,6 +1771,9 @@ function selectAt(at) {
   state.selection = hit ? { list: hit.list, index: hit.index } : null;
   renderObjects();
   renderProps();
+  //  A repaint so the canvas draws the selection ring and the footer shows what is selected;
+  //  without it a plain click-select only updated the side panels until the next edit.
+  scheduleRender();
 }
 
 /**
@@ -2290,6 +2299,10 @@ buildToolbars();
 wireControls();
 wireCanvas();
 renderSaved();
+//  Publish the startup tool's name and guidance, so the bar under the board is never blank and
+//  the default tool (wall paint) is stated rather than assumed.
+hint();
+renderHistory();
 
 //  Reopen the most recent autosaved draft, so leaving to Play and coming back does not
 //  silently reset the editor to level 1. Only fall back to the first shipped level when

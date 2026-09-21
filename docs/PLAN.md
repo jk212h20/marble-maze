@@ -1,6 +1,6 @@
 # Plan: firm ground before more levels
 
-The engine, the level format and levels 1–4 are in good shape: 242 checks pass in ~3.5 s,
+The engine, the level format and levels 1–4 are in good shape: 247 checks pass in ~3.5 s,
 there is no build step, and `docs/DESIGN.md` is unusually honest about its invariants. The
 problem is not quality — it is that **the guarantees are not enforced anywhere except when
 somebody remembers to run them**, and that **every layer tracks the obstacle vocabulary
@@ -37,6 +37,16 @@ every guarantee that survives is executable on a fresh clone.
   reach at all, and the falloff became NaN on the first step and took the marble's position with
   it. `MAGNET_RADIUS` now defaults it, the physics refuses a NaN radius, and the editor no longer
   exports `radius: undefined`.
+- **Phase 4 — first half done.** `PLAYABILITY` in the registry, enforced by
+  `tests/mechanics.test.js` in both directions: a mechanic a built level uses must claim a proof
+  that could cover it (autopilot → a non-coop level, scripted → a coop one), and a proof claim
+  with no authored level is refused. `docs/STATUS.md` carries the column. The remaining work is
+  the autopilot extension itself (belt, vent, magnet), timeboxed, with scripted plans kept for
+  the stateful mechanics.
+- **Ignored in the acceptance of Phase 1, now fixed.** The CI browser job hung in the same step
+  for over ten minutes. Root cause was the parity check's shape, not its assertions: five live
+  software-GL browser contexts in a row, and the later boots never finished on the runner. It now
+  uses one page, one navigation per fixture (140 s for all four checks locally).
 - **Phase 0 — done.** Public remote at [github.com/jk212h20/marble-maze](https://github.com/jk212h20/marble-maze),
   `v1.0-baseline` tagged, LICENSE, `.nvmrc` at 26 and `engines >=24`, `.gitattributes`.
 - **Phase 1 — done, with one caveat.** `npm run check` is the gate and CI runs it; Playwright is a

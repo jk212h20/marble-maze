@@ -152,7 +152,7 @@ on an ephemeral port so nothing has to be started by hand.
 npm run check           # node tests + every shipped level through the editor's rules
 npm run check:browser   # the four browser checks below, with the server handled for you
 npm run parity          # just the renderer-parity check: every mechanic on the built board
-npm test                # 242 headless checks: physics, level structure, tuning, profiles, solvability, marbles
+npm test                # 247 headless checks: physics, level structure, tuning, profiles, solvability, marbles
 npm run levels          # just the level-editor rules over every shipped level
 node sim/smoke.mjs      # real browser: loads the page, drives it, screenshots, times frames
 node sim/tune-check.mjs # real browser: proves the tuning panel changes the simulation,

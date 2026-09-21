@@ -23,6 +23,7 @@ import { BALL_R, GOAL_HOLE_R, LID_BEZEL } from '../../src/engine/constants.js';
 import { chainCellDistance } from '../../src/engine/levels.js';
 import { charAt, draftToSpec, chainDistance, isSlot, pointInPlate, spawnsOf, MIN_SPAWN_GAP } from './model.js';
 import { METALS } from '../../src/engine/metals.js';
+import { TUNING } from '../../src/engine/tuning.js';
 
 const METAL_IDS = new Set(METALS.map((m) => m.id));
 
@@ -447,6 +448,33 @@ export function validateDraft(draft) {
   const badMovers = (lv.spec.movers ?? []).filter((m) => m.from[0] === m.to[0] && m.from[1] === m.to[1]);
   if (badMovers.length) soft('each sliding bar has a track', `${badMovers.length} mover(s) start and end on the same cell`);
   else pass('each sliding bar has a track');
+
+  //  No field is stronger than the board itself. A steady push is answered by at most
+  //  `g * sin(maxTilt) * roll`, so a vent or magnet past that cannot be climbed by tilting at all
+  //  - the level would not be hard, it would be impossible. Measured with the live tuning, so the
+  //  rule follows the player's own max tilt rather than the shipped number.
+  //
+  //  A warning, not an error: a field the marble is *not* asked to climb is fine, and only the
+  //  author knows the route. (If such a level is authored without a scripted plan, the tilt
+  //  autopilot in tests/solver.test.js fails on it, which is the enforcing half.)
+  const ceiling = TUNING.gravity * Math.sin(TUNING.maxTilt) * TUNING.roll;
+  const tooStrong = [
+    ...(spec.vents ?? []).map((v, i) => ({ what: `fan ${i + 1} at ${TUNING.ventAccel.toFixed(2)} u/s²`, over: TUNING.ventAccel > ceiling })),
+    ...(spec.magnets ?? []).map((m, i) => ({
+      what: `magnet ${i + 1} at ${Math.abs(m.strength ?? TUNING.magnetStrength).toFixed(2)} u/s²`,
+      over: Math.abs(m.strength ?? TUNING.magnetStrength) > ceiling,
+    })),
+  ].filter((f) => f.over);
+  if (tooStrong.length) {
+    soft(
+      'no field is stronger than the board can climb',
+      `${tooStrong.map((f) => f.what).join(', ')} — the board's own maximum is ${ceiling.toFixed(2)} u/s², so a marble cannot climb one of these however it is steered`,
+    );
+  } else if ((spec.vents ?? []).length || (spec.magnets ?? []).length) {
+    pass('no field is stronger than the board can climb', `ceiling ${ceiling.toFixed(2)} u/s²`);
+  } else {
+    pass('no field is stronger than the board can climb', 'no fans or magnets in this level');
+  }
 
   return { spec, level: lv, results };
 }
