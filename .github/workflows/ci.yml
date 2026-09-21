@@ -39,7 +39,7 @@ jobs:
       - run: npm ci
       - name: install Chromium (software GL)
         run: npx playwright install --with-deps chromium
-      - name: smoke, tuning panel and audio
+      - name: smoke, tuning panel, audio and renderer parity
         run: npm run check:browser
       - name: upload screenshots when the smoke check fails
         if: failure()

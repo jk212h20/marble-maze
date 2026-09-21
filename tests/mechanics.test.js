@@ -10,6 +10,8 @@ import {
   MECHANICS,
   FORMAT_ONLY_KEYS,
   MECHANIC_TUNING_PATHS,
+  PLAYABILITY,
+  playabilityOf,
   usesMechanic,
   mechanicsOf,
 } from '../src/engine/mechanics.js';
@@ -153,6 +155,64 @@ export function tests(t) {
     const mechanicKeys = new Set(MECHANICS.flatMap((m) => m.specKeys));
     for (const key of FORMAT_ONLY_KEYS) {
       if (mechanicKeys.has(key)) throw new Error(`${key} is listed both as a mechanic and as format-only`);
+    }
+  });
+
+  t.ok('every playability claim names a real mechanic, and every mechanic is accounted for', () => {
+    const keys = new Set(MECHANICS.map((m) => m.key));
+    for (const [proof, list] of Object.entries(PLAYABILITY)) {
+      for (const key of list) {
+        if (!keys.has(key)) throw new Error(`PLAYABILITY.${proof} names '${key}', which is not a mechanic`);
+      }
+    }
+    const claimed = [...PLAYABILITY.autopilot, ...PLAYABILITY.scripted];
+    if (new Set(claimed).size !== claimed.length) {
+      throw new Error('a mechanic is claimed by two proofs at once');
+    }
+    for (const m of MECHANICS) {
+      if (claimed.includes(m.key) || playabilityOf(m.key) === 'unproven') continue;
+      throw new Error(`${m.key}: unknown proof`);
+    }
+  });
+
+  t.ok('a mechanic a built level uses is proven, and by a proof that could actually cover it', () => {
+    //  The contract: no mechanic rests on a check that never ran on it. An `autopilot` claim needs
+    //  a level the pilot really plays (so not a coop one), and a `scripted` claim needs a level
+    //  that is flagged coop - which is what sends it to the hand-written plan.
+    for (const m of MECHANICS) {
+      const users = built.filter(({ spec }) => usesMechanic(m, spec));
+      const proof = playabilityOf(m.key);
+      if (users.length === 0) {
+        if (proof !== 'unproven') {
+          throw new Error(`${m.key} claims '${proof}' but no built level uses it, so nothing proves it`);
+        }
+        continue;
+      }
+      const ids = users.map((u) => u.id).join(', ');
+      if (proof === 'unproven') {
+        throw new Error(`${m.key} is used by ${ids} but claims no playability proof`);
+      }
+      if (proof === 'autopilot' && !users.some(({ spec }) => !spec.coop)) {
+        throw new Error(`${m.key} claims the autopilot proves it, but every level using it is coop (${ids})`);
+      }
+      if (proof === 'scripted' && !users.some(({ spec }) => spec.coop)) {
+        throw new Error(`${m.key} claims a scripted plan, but no level using it is flagged coop (${ids})`);
+      }
+    }
+  });
+
+  t.ok('the unproven mechanics are exactly the ones no level uses', () => {
+    const unprovenUsed = MECHANICS.filter(
+      (m) => playabilityOf(m.key) === 'unproven' && built.some(({ spec }) => usesMechanic(m, spec)),
+    ).map((m) => m.key);
+    if (unprovenUsed.length) {
+      throw new Error(`these mechanics are in a level with no proof: ${unprovenUsed.join(', ')}`);
+    }
+    const provenUnused = MECHANICS.filter(
+      (m) => playabilityOf(m.key) !== 'unproven' && !built.some(({ spec }) => usesMechanic(m, spec)),
+    ).map((m) => m.key);
+    if (provenUnused.length) {
+      throw new Error(`these mechanics claim a proof with no level to prove: ${provenUnused.join(', ')}`);
     }
   });
 

@@ -303,6 +303,36 @@ export const MECHANICS = [
 ];
 
 /**
+ * How each mechanic's *playability* is proven — or whether it is proven at all.
+ *
+ * This is the honest half of the autopilot's contract. `tests/solver.test.js` drives a tilt-only
+ * autopilot through every level, which is what makes "playable by tilt alone" a tested claim
+ * rather than a hope. Two things weaken that claim, and both are recorded here instead of being
+ * quietly assumed:
+ *
+ *   * a *cooperative* level (`spec.coop`) is one the single-marble pilot cannot play by
+ *     construction, so it is proven by a scripted two-marble plan instead (tests/lifts.test.js);
+ *   * a mechanic the pilot does not model — the steady forces of a belt, a fan or a magnet, the
+ *     timing of a gate — is not covered by that proof, however green the suite looks.
+ *
+ * `unproven` is the default and it is not a judgement: a mechanic with no authored level has
+ * nothing to prove yet. The rule `tests/mechanics.test.js` enforces is that **a playability claim
+ * requires an authored level**, so a mechanic cannot be declared solved by a check that never
+ * ran on it. See docs/PLAN.md Phase 4 for closing the `unproven` rows.
+ */
+export const PLAYABILITY = {
+  autopilot: ['wall', 'pit', 'goal', 'multi-marble', 'peg', 'windmill', 'ramp'],
+  scripted: ['plate', 'lift'],
+};
+
+/** The proof a mechanic rests on: 'autopilot', 'scripted', or 'unproven'. */
+export function playabilityOf(key) {
+  if (PLAYABILITY.autopilot.includes(key)) return 'autopilot';
+  if (PLAYABILITY.scripted.includes(key)) return 'scripted';
+  return 'unproven';
+}
+
+/**
  * Spec keys that are level metadata or format plumbing rather than mechanics.
  *
  * tests/mechanics.test.js reads every `spec.X` in levels.js and requires each one to be either a

@@ -16,7 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { MECHANICS, mechanicsOf } from '../src/engine/mechanics.js';
+import { MECHANICS, mechanicsOf, playabilityOf } from '../src/engine/mechanics.js';
 import { LEVELS } from '../src/engine/levels.js';
 
 const ROOT = path.join(import.meta.dirname, '..');
@@ -42,12 +42,17 @@ function runSuite() {
 }
 
 function tableFor(rows) {
-  const head = '| Mechanic | Engine | Renders | Tuning | In a level |\n| --- | --- | --- | --- | --- |';
+  const head =
+    '| Mechanic | Engine | Renders | Playability proof | Tuning | In a level |\n' +
+    '| --- | --- | --- | --- | --- | --- |';
   const body = rows.map(({ mechanic: m, users }) => {
     const renders = { mesh: 'mesh', painted: 'painted cells', none: '**nothing**' }[m.render];
+    const proof = { autopilot: 'autopilot', scripted: 'scripted plan', unproven: '**unproven**' }[
+      playabilityOf(m.key)
+    ];
     const tuning = m.tuning.length ? m.tuning.map((p) => `\`${p}\``).join(', ') : '—';
     const inLevel = users.length ? users.join(', ') : '**no level yet**';
-    return `| ${m.label} | yes | ${renders} | ${tuning} | ${inLevel} |`;
+    return `| ${m.label} | yes | ${renders} | ${proof} | ${tuning} | ${inLevel} |`;
   });
   return [head, ...body].join('\n');
 }
@@ -62,6 +67,7 @@ function block(report) {
   const shipped = withUsers.filter((r) => r.users.length);
   const engineOnly = withUsers.filter((r) => !r.users.length);
   const gap = engineOnly.filter((r) => r.mechanic.render === 'none');
+  const unproven = withUsers.filter((r) => playabilityOf(r.mechanic.key) === 'unproven');
 
   const suites = report.suites
     .map((s) => `| \`${s.file}\` | ${s.checks} |`)
@@ -85,6 +91,21 @@ function block(report) {
       '',
       `**Physics without a picture:** ${gap.map((r) => r.mechanic.label).join(', ')}. ` +
         '`tests/mechanics.test.js` fails the moment an authored level uses one of these, so this cannot reach a player.',
+    );
+  }
+
+  lines.push(
+    '',
+    'Every mechanic an authored level uses is covered by a playability proof: a tilt-only autopilot ' +
+      'playing the level (`tests/solver.test.js`), or a scripted plan for the levels the pilot cannot ' +
+      'play (`tests/lifts.test.js`). A proof claim with no authored level is refused by ' +
+      '`tests/mechanics.test.js`, which is why every engine-only row above reads *unproven* — there ' +
+      'is nothing to prove yet, and saying otherwise would be a claim nothing checks.',
+  );
+  if (unproven.filter((r) => r.users.length).length) {
+    lines.push(
+      '',
+      `**Used but unproven:** ${unproven.filter((r) => r.users.length).map((r) => r.mechanic.label).join(', ')}.`,
     );
   }
 
