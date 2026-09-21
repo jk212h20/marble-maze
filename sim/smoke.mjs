@@ -17,7 +17,16 @@ fs.mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({
   args: ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'],
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
+// Device scale 2 is the shipping look, but a software renderer on a CI runner paints four
+// times the pixels of scale 1 and can starve a 30s action timeout. MM_SCALE=1 halves that cost
+// without changing what is asserted; the measured frame times are reported either way.
+const page = await browser.newPage({
+  viewport: { width: 1280, height: 800 },
+  deviceScaleFactor: Number(arg('scale', process.env.MM_SCALE ?? 2)),
+});
+// Screenshots and navigations on a software renderer take as long as they take: a bare default
+// timeout turns a slow machine into a mysterious `TimeoutError` from whichever call starved.
+page.setDefaultTimeout(Number(process.env.MM_BROWSER_TIMEOUT ?? 180000));
 
 const errors = [];
 const logs = [];

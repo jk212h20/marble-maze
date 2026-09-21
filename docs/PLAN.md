@@ -1,6 +1,6 @@
 # Plan: firm ground before more levels
 
-The engine, the level format and levels 1–4 are in good shape: 223 checks pass in ~3.5 s,
+The engine, the level format and levels 1–4 are in good shape: 233 checks pass in ~3.5 s,
 there is no build step, and `docs/DESIGN.md` is unusually honest about its invariants. The
 problem is not quality — it is that **the guarantees are not enforced anywhere except when
 somebody remembers to run them**, and that **every layer tracks the obstacle vocabulary

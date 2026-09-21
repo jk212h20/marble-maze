@@ -5,9 +5,10 @@
   "main": "index.js",
   "scripts": {
     "test": "node tests/run.js",
-    "check": "node tests/run.js && node tools/check-levels.mjs",
+    "check": "node tests/run.js && node tools/check-levels.mjs && node tools/gen-status.mjs --check",
     "check:browser": "node sim/check-browser.mjs",
     "levels": "node tools/check-levels.mjs",
+    "status": "node tools/gen-status.mjs --write",
     "start": "node sim/serve.js",
     "smoke": "node sim/smoke.mjs",
     "tune": "node sim/tune-check.mjs",

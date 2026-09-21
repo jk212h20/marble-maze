@@ -66,6 +66,10 @@ function run(file, args) {
     const child = spawn(process.execPath, [path.join('sim', file), ...args], {
       cwd: ROOT,
       stdio: 'inherit',
+      // A CI runner paints the same pixels on a much slower CPU, so the smoke check runs at
+      // device scale 1 there. The assertions are identical; the frame times it prints still
+      // describe the machine it ran on, which is why they are reported rather than asserted.
+      env: { ...process.env, ...(process.env.CI ? { MM_SCALE: process.env.MM_SCALE ?? '1' } : {}) },
     });
     child.on('exit', (code) => resolve(code ?? 1));
   });

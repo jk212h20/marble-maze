@@ -151,7 +151,7 @@ on an ephemeral port so nothing has to be started by hand.
 ```bash
 npm run check           # node tests + every shipped level through the editor's rules
 npm run check:browser   # the three browser checks below, with the server handled for you
-npm test                # 223 headless checks: physics, level structure, tuning, profiles, solvability, marbles
+npm test                # 233 headless checks: physics, level structure, tuning, profiles, solvability, marbles
 npm run levels          # just the level-editor rules over every shipped level
 node sim/smoke.mjs      # real browser: loads the page, drives it, screenshots, times frames
 node sim/tune-check.mjs # real browser: proves the tuning panel changes the simulation,

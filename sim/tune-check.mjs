@@ -11,13 +11,21 @@ const browser = await chromium.launch({
   args: ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+page.setDefaultTimeout(Number(process.env.MM_BROWSER_TIMEOUT ?? 180000));
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => {
   if (m.type() === 'error') errors.push(m.text());
 });
 
-await page.goto(url, { waitUntil: 'load', timeout: 180000 });
+//  A navigation is a full re-boot, and a bare `goto`/`reload` inherits playwright's 30s default —
+//  which is how this check starved on a slow CI runner with a `TimeoutError` that said nothing
+//  about which wait had starved. Every navigation in this file goes through these two.
+const NAV_TIMEOUT = 180000;
+const nav = (target, opts = {}) => page.goto(target, { waitUntil: 'load', timeout: NAV_TIMEOUT, ...opts });
+const reload = (opts = {}) => page.reload({ waitUntil: 'load', timeout: NAV_TIMEOUT, ...opts });
+
+await nav(url);
 //  The boot has to be allowed to take a while, and it has to *say* what it saw when it does not
 //  arrive. A default 30s wait on a busy machine looks exactly like a broken build, and the title is
 //  what distinguishes "the game is slow" from "that port is serving some other application".
@@ -371,7 +379,7 @@ report.persist = await page.evaluate(() => {
   window.__maze.tuning.set('maxTilt', 0.19);
   return window.__maze.tuning.json();
 });
-await page.reload({ waitUntil: 'load' });
+await reload();
 await booted('after a reload');
 await page.waitForTimeout(900);
 report.afterReload = await page.evaluate(() => ({
@@ -382,7 +390,7 @@ report.afterReload = await page.evaluate(() => ({
 if (Math.abs(report.afterReload.roll - 0.31) > 1e-9) problems.push('tuning did not survive a reload');
 if (!report.afterReload.custom) problems.push('reloaded tuning was not reported as custom');
 
-await page.goto(`${url}?physics=default`, { waitUntil: 'load' });
+await nav(`${url}?physics=default`);
 await booted('on ?physics=default');
 await page.waitForTimeout(700);
 report.forcedDefault = await page.evaluate(() => ({
@@ -392,7 +400,7 @@ report.forcedDefault = await page.evaluate(() => ({
 if (report.forcedDefault.custom) problems.push('?physics=default did not ignore the saved tuning');
 
 // 7. copy JSON reflects the live values
-await page.goto(url, { waitUntil: 'load' });
+await nav(url);
 await booted('on a fresh load');
 await page.waitForTimeout(700);
 report.export = await page.evaluate(() => {
@@ -455,7 +463,7 @@ if (!report.profileSave.names.includes('browser check')) {
 }
 if (!report.profileSave.note.includes('saved')) problems.push(`the save was not acknowledged (${report.profileSave.note})`);
 
-await page.reload({ waitUntil: 'load' });
+await reload();
 await booted('after a reload');
 await page.waitForTimeout(900);
 report.profileLoad = await page.evaluate(async () => {

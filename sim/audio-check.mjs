@@ -21,6 +21,7 @@ const url = arg('url', 'http://127.0.0.1:3010/');
 
 const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
 const page = await browser.newPage();
+page.setDefaultTimeout(Number(process.env.MM_BROWSER_TIMEOUT ?? 180000));
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e.message)));
 page.on('console', (m) => {
