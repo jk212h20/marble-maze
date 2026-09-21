@@ -76,7 +76,7 @@ Notes:
 
 ## Test coverage
 
-`npm test` = `node tests/run.js` → **219 checks across 14 suites**, dependency-free, all in
+`npm test` = `node tests/run.js` → **223 checks across 14 suites**, dependency-free, all in
 node (no browser, no GPU). Roughly:
 
 | Suite | Checks | Covers |

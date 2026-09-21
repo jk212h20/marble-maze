@@ -143,7 +143,7 @@ cannot quietly make a level unplayable.
 ## Testing
 
 ```bash
-npm test                # 219 headless checks: physics, level structure, tuning, profiles, solvability, marbles
+npm test                # 223 headless checks: physics, level structure, tuning, profiles, solvability, marbles
 node sim/smoke.mjs      # real browser: loads the page, drives it, screenshots, times frames
 node sim/tune-check.mjs # real browser: proves the tuning panel changes the simulation,
                         # that the range modes widen the sliders, that profiles reload, that

@@ -1,6 +1,6 @@
 # Plan: firm ground before more levels
 
-The engine, the level format and levels 1–4 are in good shape: 219 checks pass in ~3.5 s,
+The engine, the level format and levels 1–4 are in good shape: 223 checks pass in ~3.5 s,
 there is no build step, and `docs/DESIGN.md` is unusually honest about its invariants. The
 problem is not quality — it is that **the guarantees are not enforced anywhere except when
 somebody remembers to run them**, and that **every layer tracks the obstacle vocabulary
@@ -10,7 +10,7 @@ Evidence for that, from the current tree:
 
 - `oneway` exists in `levels.js` and `physics.js` and nowhere else: no renderer, no test, no
   level. Nothing noticed.
-- `README.md` claimed 213 checks (actually 219) and listed "Levels 1-3" (there are 4) and a
+- `README.md` claimed 213 checks (actually 223) and listed "Levels 1-3" (there are 4) and a
   slate of "4-10" (it is 5-12). Pure drift, fixed by hand in `25c14c5`.
 - `tools/level-editor/check.mjs` refuses to run the autopilot because the solver "has not kept
   up with the engine". So the editor's own verdict is knowingly incomplete.
@@ -55,7 +55,7 @@ The repository exists in exactly one place and has no tags.
 - [ ] GitHub Actions workflow: checkout, `npm ci`, `node -v`, `npm run check` on push and PR
 - [ ] Let CI run the three `sim/*.mjs` checks headlessly (they already use SwiftShader, so no
       GPU is needed) against a server started in the same job
-- [ ] Record the baseline: 219 checks / 14 suites, ~3.5 s
+- [ ] Record the baseline: 223 checks / 14 suites, ~3.5 s
 
 Deliberately excluded from CI: `npm run perf` and `npm run marble-cost` need a real GPU.
 
