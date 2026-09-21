@@ -6,7 +6,7 @@
 // show is the real toy with the real rim geometry, not a preview that approximates it. One page load
 // for every option, in a throwaway browser context: the choice is never written into anyone's saved
 // tuning, and a run costs one game start rather than one per picture.
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 

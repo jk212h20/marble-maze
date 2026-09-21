@@ -13,7 +13,7 @@
 // the board. The mean brightness of a band of wood across the frame is compared against the same
 // band with a marble that carries no light, and the difference is reported. That is the honest
 // answer to "does the light do anything", which looking at a warm-brown board cannot settle.
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 

@@ -1,12 +1,12 @@
 // Screenshot the material picker: the candidate sheet, a close-up per candidate, and the grain
-// strip per candidate. Headless Chromium via the machine's playwright (the same one sim/smoke.mjs
+// strip per candidate. Headless Chromium via the project's playwright (the same one sim/smoke.mjs
 // uses), SwiftShader software GL, because this is a laptop and the point is the pixels.
 //
 //   node tools/materials-shot.mjs [--url http://127.0.0.1:3010/tools/materials.html] [--out docs/materials]
 //
 // It reports the boot time it measured in the page and every console error it saw, so a broken
 // candidate cannot be mistaken for a rendered one.
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 

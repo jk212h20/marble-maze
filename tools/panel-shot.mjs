@@ -2,13 +2,13 @@
 //
 //   node tools/panel-shot.mjs [--url http://127.0.0.1:3010] [--out docs/tuning-panel.png]
 //
-// Headless Chromium via the machine's playwright with SwiftShader software GL, like the other shot
+// Headless Chromium via the project's playwright with SwiftShader software GL, like the other shot
 // tools: the point here is the picture, and the panel is text and controls rather than anything the
 // GPU is good at.
 //
 // This is the one shot that documents the *controls* rather than the board, so it is the one that
 // goes stale when a dial is added - which is exactly when it is worth regenerating.
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 

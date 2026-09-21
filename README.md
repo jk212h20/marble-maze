@@ -142,8 +142,17 @@ cannot quietly make a level unplayable.
 
 ## Testing
 
+`npm run check` is what CI runs and what a change has to pass: the headless checks **and** every
+shipped level through the level editor's own rules. It needs nothing but node.
+
+`npm run check:browser` then runs the three real-browser checks, starting the dev server itself
+on an ephemeral port so nothing has to be started by hand.
+
 ```bash
+npm run check           # node tests + every shipped level through the editor's rules
+npm run check:browser   # the three browser checks below, with the server handled for you
 npm test                # 223 headless checks: physics, level structure, tuning, profiles, solvability, marbles
+npm run levels          # just the level-editor rules over every shipped level
 node sim/smoke.mjs      # real browser: loads the page, drives it, screenshots, times frames
 node sim/tune-check.mjs # real browser: proves the tuning panel changes the simulation,
                         # that the range modes widen the sliders, that profiles reload, that
@@ -158,9 +167,14 @@ npm run marbles         # lab shots; npm run marble-board for the same marbles o
                         # (both are SwiftShader, because the point there is the pixels)
 ```
 
-The audio check needs the page open over HTTP (`devports launch --name marblemaze --port 3010 -- node sim/serve.js --port {port}`),
-then `node sim/audio-check.mjs --url <url>`. It renders the real voices through an OfflineAudioContext,
-so it proves each sound is audible and correctly panned without anyone having to listen.
+Each of the three browser checks takes `--url` and defaults to `http://127.0.0.1:3010/`, so you can
+still run one by hand against a server you started yourself
+(`devports launch --name marblemaze --port 3010 -- node sim/serve.js --port {port}`).
+The audio check renders the real voices through an OfflineAudioContext, so it proves each sound is
+audible and correctly panned without anyone having to listen.
+
+Playwright is a **devDependency** now, so these run on a fresh clone after `npm ci` plus
+`npx playwright install chromium`; they no longer reach into a machine-global install.
 
 `npm test` includes two checks that matter most:
 

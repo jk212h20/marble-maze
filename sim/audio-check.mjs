@@ -10,7 +10,7 @@
 //  whose tempo does not rise with the marble's speed.
 //
 //  Run: node sim/audio-check.mjs [--url http://127.0.0.1:3010/]
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 
 const args = process.argv.slice(2);
 const arg = (name, dflt) => {

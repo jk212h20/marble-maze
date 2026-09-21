@@ -1,7 +1,7 @@
 // Headless browser smoke test: loads the real page in Chromium, checks for console
 // errors, drives the game through its debug API, screenshots a few states, and reports
 // the honest per-frame cost. Run: node sim/smoke.mjs [--url http://...] [--out /tmp/dir]
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 import fs from 'node:fs';
 
 const args = process.argv.slice(2);

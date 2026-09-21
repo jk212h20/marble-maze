@@ -1,0 +1,11 @@
+# The reference renders under docs/ are the project's visual record, not text.
+*.png binary
+*.jpg binary
+*.webp binary
+
+# Keep generated media out of language statistics and diffs entirely.
+docs/**/*.png -diff
+tools/*.png -diff
+assets/*.png -diff
+
+* text=auto eol=lf

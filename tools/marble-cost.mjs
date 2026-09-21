@@ -13,7 +13,7 @@
 // threshold tight enough to be meaningful is also tight enough to fail on a busy machine.
 //
 //   node tools/marble-cost.mjs
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 
 const URL = process.env.MM_URL || 'http://127.0.0.1:3010/';
 const SAMPLE_MS = 2500;

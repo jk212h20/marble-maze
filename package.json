@@ -5,6 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "node tests/run.js",
+    "check": "node tests/run.js && node tools/check-levels.mjs",
+    "check:browser": "node sim/check-browser.mjs",
+    "levels": "node tools/check-levels.mjs",
     "start": "node sim/serve.js",
     "smoke": "node sim/smoke.mjs",
     "tune": "node sim/tune-check.mjs",
@@ -16,13 +19,20 @@
     "marble-cost": "node tools/marble-cost.mjs",
     "perf": "node tools/perf-profile.mjs",
     "solve": "node tools/solve.js",
-    "panel": "node tools/panel-shot.mjs"
+    "panel": "node tools/panel-shot.mjs",
+    "rim": "node tools/rim-shot.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "dependencies": {
     "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "playwright": "1.60.0"
   }
 }

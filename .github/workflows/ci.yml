@@ -1,0 +1,51 @@
+name: checks
+
+# Two jobs, because they have different needs: the node checks run anywhere node does, and the
+# browser checks need a Chromium with software GL. Keeping them separate means a flaky browser
+# job never hides a real engine failure, and the fast job stays fast (~5 s).
+#
+# Neither job needs a GPU, a build step, or a server started by hand: sim/check-browser.mjs
+# starts the dev server itself on an ephemeral port.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  node:
+    name: node checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: physics, levels, tuning, marbles, vials
+        run: npm test
+      - name: every shipped level through the editor's rules
+        run: npm run levels
+
+  browser:
+    name: browser checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: install Chromium (software GL)
+        run: npx playwright install --with-deps chromium
+      - name: smoke, tuning panel and audio
+        run: npm run check:browser
+      - name: upload screenshots when the smoke check fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: /tmp/marblemaze-shots
+          if-no-files-found: ignore
+          retention-days: 7

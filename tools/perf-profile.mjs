@@ -15,7 +15,7 @@
 // The adaptive quality loop is pinned by default (`--tier high`), because it is *designed* to move
 // the tier under load: measuring the shipped configuration while it quietly downgrades would report
 // the tier's cost as if it were the feature's. Pass `--tier auto` to watch the loop's own choice.
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 
 const args = process.argv.slice(2);
 const arg = (name, dflt) => {

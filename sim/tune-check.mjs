@@ -3,7 +3,7 @@
 //  the panel never tilt the board.
 //
 //  Run: node sim/tune-check.mjs
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 
 const url = process.argv.includes('--url') ? process.argv[process.argv.indexOf('--url') + 1] : 'http://127.0.0.1:3010/';
 const problems = [];

@@ -5,7 +5,7 @@
 //
 // Headless Chromium via the machine's playwright, SwiftShader software GL — the same approach as
 // tools/materials-shot.mjs, because the point is the pixels and this is a laptop.
-import { chromium } from '/opt/homebrew/lib/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { SHIPPED_MARBLE_IDS } from '../src/render/marbles.js';
