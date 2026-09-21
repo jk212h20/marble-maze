@@ -39,7 +39,10 @@ jobs:
       - run: npm ci
       - name: install Chromium (software GL)
         run: npx playwright install --with-deps chromium
+      # A bounded step, so a stall fails visibly instead of sitting in the log: the checks boot a
+      # software-GL browser several times, and the runner is much slower than a laptop.
       - name: smoke, tuning panel, audio and renderer parity
+        timeout-minutes: 20
         run: npm run check:browser
       - name: upload screenshots when the smoke check fails
         if: failure()

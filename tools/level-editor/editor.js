@@ -15,7 +15,7 @@
 //  edit. Everything drawn on the canvas comes from the built level, so the editor shows the
 //  engine's reading of the draft rather than the draft's intentions.
 
-import { LEVELS, cellIndex } from '../../src/engine/levels.js';
+import { LEVELS, cellIndex, PLATE, PIT, PAD, SPAWN, GOAL, OUTSIDE } from '../../src/engine/levels.js';
 import {
   PAINT_CELLS,
   PIT_TOOL,
@@ -47,6 +47,7 @@ import {
   platesOverCell,
   removePlate,
   PLATE_MATERIALS,
+  PAINT_BY_CHAR,
   spawnsOf,
   spawnAt,
   spawnFits,
@@ -86,6 +87,30 @@ function h(tag, props = {}, ...kids) {
 
 const label = (text, control, cls = 'field') => h('label', { class: cls }, text, control);
 
+/** A readable name for a grid character, for the footer's "what is under the cursor" readout. */
+const CHAR_LABEL = {
+  [PLATE]: 'pressure button',
+  [PIT]: 'pit',
+  [PAD]: 'teleport pad',
+  [SPAWN]: 'marble',
+  [GOAL]: 'goal cup',
+  [OUTSIDE]: 'off-board',
+};
+function charName(ch) {
+  return PAINT_BY_CHAR[ch]?.label ?? CHAR_LABEL[ch] ?? ch;
+}
+
+/** The keyboard shortcuts the editor answers to, shown so they are discoverable. */
+const KEYS = [
+  ['f w i s t c v', 'paint floor / wall / ice / sand / steel / conveyor / fan'],
+  ['o', 'pit & slot brush'],
+  ['g', 'goal-cup tool'],
+  ['e', 'erase tool'],
+  ['Esc', 'select / edit'],
+  ['⌫', 'delete the selected object'],
+  ['⌘Z', 'undo  ·  ⇧⌘Z redo'],
+];
+
 function buildUI() {
   document.body.append(
     h('header', { class: 'top' },
@@ -93,16 +118,20 @@ function buildUI() {
       label('start from', h('select', { id: 'start-from' })),
       h('button', { id: 'btn-new', title: 'Start a blank level', text: 'new' }),
       h('a', { id: 'btn-play', class: 'play', href: '../../index.html?draft=session', title: 'Play the draft you are editing in the game itself', text: 'play this draft' }),
+      h('button', { id: 'btn-undo', title: 'Undo (⌘Z / Ctrl+Z)', text: '↶ undo' }),
+      h('button', { id: 'btn-redo', title: 'Redo (⇧⌘Z / Ctrl+Y)', text: 'redo ↷' }),
       h('span', { class: 'grow' }),
-      h('button', { id: 'btn-validate', title: 'Re-run every rule against the draft', text: 'validate' }),
-      h('span', { class: 'badge warn', id: 'solver-badge', title: 'The autopilot solver is disabled — see the note in the right-hand panel.', text: 'solver off' }),
-      h('button', { id: 'btn-solve', disabled: 'disabled', title: 'The autopilot solver is disabled: it has not kept up with the engine, so its verdict would be misleading. Rules and reachability are computed from the geometry instead.', text: 'Solve (off)' }),
+      //  One live status chip instead of a badge plus a dead button: it says what is wrong with
+      //  the draft right now, and clicking it jumps to the ledger that explains it.
+      h('button', { id: 'status-chip', class: 'chip', title: 'Jump to the rules that produced this verdict', text: '—' }),
+      h('button', { id: 'btn-validate', title: 'Re-run every rule against the draft', text: 're-validate' }),
     ),
     h('main', {},
       // ---- left: level, paint, place -------------------------------------
       h('aside', {},
         h('h2', { text: 'Level' }),
         label('id', h('input', { type: 'text', id: 'nl-id' })),
+        h('div', { class: 'hint idnote', id: 'id-note' }),
         label('name', h('input', { type: 'text', id: 'nl-name' })),
         label('shape', h('select', { id: 'nl-shape' },
           ...SHAPES.map((s) => h('option', { value: s, text: SHAPE_LABEL[s] ?? s })),
@@ -129,21 +158,33 @@ function buildUI() {
         h('button', { id: 'btn-select', style: 'width:100%;margin-top:4px', text: 'select / edit' }),
         h('h2', { text: 'Pairs' }),
         h('div', { class: 'toolgrid', id: 'pair-tools' }),
-        h('p', { class: 'hint', id: 'tool-hint' }),
+        h('h2', { text: 'Keys' }),
+        h('ul', { class: 'keys', id: 'key-legend' },
+          ...KEYS.map(([k, what]) => h('li', {}, h('kbd', { text: k }), h('span', { text: what }))),
+        ),
       ),
       // ---- middle: the board ---------------------------------------------
-      h('section', { id: 'stage' }, h('canvas', { id: 'board' }), h('div', { id: 'stagefoot' })),
+      h('section', { id: 'stage' },
+        h('canvas', { id: 'board' }),
+        //  The active tool and what it will do, next to the board rather than at the bottom of a
+        //  scrolling column: the guidance belongs where the cursor is.
+        h('div', { id: 'stagehelp' },
+          h('span', { class: 'tool', id: 'tool-name', text: 'select' }),
+          h('span', { id: 'tool-hint' }),
+        ),
+        h('div', { id: 'stagefoot' }),
+      ),
       // ---- right: rules, obstacles, export, import, storage ----------------
       h('aside', { class: 'right' },
-        h('h2', {}, 'Rules ', h('span', { class: 'badge', id: 'valid-count', text: '—' })),
+        h('h2', { class: 'sticky' }, 'Rules ', h('span', { class: 'badge', id: 'valid-count', text: '—' }), h('span', { class: 'badge warn', id: 'solver-badge', title: 'The autopilot solver is disabled — see the note below.', text: 'solver off' })),
         h('p', { class: 'hint', id: 'solver-note' }, SOLVER_NOTE),
         label('show passing checks', h('input', { type: 'checkbox', id: 'chk-showoks' })),
         h('ul', { class: 'ledger', id: 'ledger' }),
-        h('h2', { text: 'Obstacles' }),
+        h('h2', { class: 'sticky', text: 'Obstacles' }),
         h('div', { class: 'objlist', id: 'object-list' }),
-        h('h2', { text: 'Properties' }),
+        h('h2', { class: 'sticky', text: 'Properties' }),
         h('div', { class: 'props', id: 'props' }),
-        h('h2', { text: 'Export' }),
+        h('h2', { class: 'sticky' }, 'Export ', h('span', { class: 'hint', id: 'export-info' })),
         h('div', { class: 'tabs' },
           h('button', { id: 'tab-source', text: 'LEVELS entry' }),
           h('button', { id: 'tab-json', text: 'JSON' }),
@@ -153,14 +194,14 @@ function buildUI() {
         ),
         h('textarea', { id: 'export-text', spellcheck: 'false', 'data-tab': 'source' }),
         h('p', { class: 'hint' }, 'Paste the LEVELS entry into the LEVELS array in src/engine/levels.js, then check it with the headless suite (node tests/run.js). The autopilot in that suite is the engine\u2019s own probe, not this editor\u2019s playability answer.'),
-        h('h2', { text: 'Import' }),
+        h('h2', { class: 'sticky', text: 'Import' }),
         h('div', { class: 'row tight' },
           h('button', { id: 'btn-example', text: 'show current JSON' }),
           h('button', { id: 'btn-import', class: 'primary', text: 'load JSON' }),
         ),
         h('textarea', { id: 'import-text', placeholder: 'paste a level spec (JSON) here', spellcheck: 'false' }),
         h('p', { class: 'hint', id: 'import-note' }),
-        h('h2', { text: 'Saved drafts' }),
+        h('h2', { class: 'sticky', text: 'Saved drafts' }),
         h('div', { class: 'row tight' },
           h('button', { id: 'btn-save', text: 'save draft' }),
           h('span', { class: 'hint', id: 'save-note' }),
@@ -250,13 +291,88 @@ const isShipped = (id) => LEVELS.some((l) => l.id === id);
 //  Build / validate / render
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+//  Undo / redo
+// ---------------------------------------------------------------------------
+//
+//  History is kept as whole draft specs - the same shape `draftToSpec` emits and `specToDraft`
+//  eats - so an undo is just "load the previous spec". A canvas gesture records ONE entry for the
+//  whole drag (the spec before the first mutation), and a burst of rebuilds from a slider is
+//  coalesced by time, so undo steps line up with what a person thinks of as one edit.
+
+const HISTORY_MAX = 150;
+const HISTORY_COALESCE_MS = 600;
+const history = [];
+const future = [];
+let suppressHistory = false;
+let gestureActive = false;
+let gestureRecorded = false;
+let lastHistoryAt = 0;
+
+function recordHistory(before, after) {
+  if (suppressHistory || !before || before === after) return;
+  const now = performance.now();
+  if (gestureActive) {
+    // One entry per gesture: the first rebuild of a drag keeps the pre-drag spec, the rest are
+    // the same edit in progress.
+    if (gestureRecorded) return;
+    gestureRecorded = true;
+  } else if (now - lastHistoryAt < HISTORY_COALESCE_MS) {
+    // A slider dragged across many `input` events is one edit, not thirty.
+    return;
+  }
+  history.push(before);
+  if (history.length > HISTORY_MAX) history.shift();
+  future.length = 0;
+  lastHistoryAt = now;
+  renderHistory();
+}
+
+function renderHistory() {
+  const u = el['btn-undo'];
+  const r = el['btn-redo'];
+  if (!u || !r) return;
+  u.disabled = history.length === 0;
+  r.disabled = future.length === 0;
+  u.title = history.length
+    ? `Undo (\u2318Z / Ctrl+Z) \u2014 ${history.length} step${history.length === 1 ? '' : 's'}`
+    : 'Nothing to undo';
+  r.title = future.length
+    ? `Redo (\u21e7\u2318Z / Ctrl+Y) \u2014 ${future.length} step${future.length === 1 ? '' : 's'}`
+    : 'Nothing to redo';
+}
+
+function restoreHistory(json) {
+  suppressHistory = true;
+  try {
+    loadFromSpec(JSON.parse(json));
+  } finally {
+    suppressHistory = false;
+  }
+  renderHistory();
+}
+
+function undo() {
+  if (!history.length || !state.spec) return;
+  future.push(JSON.stringify(state.spec));
+  restoreHistory(history.pop());
+}
+
+function redo() {
+  if (!future.length || !state.spec) return;
+  history.push(JSON.stringify(state.spec));
+  restoreHistory(future.pop());
+}
+
 function rebuild() {
+  const before = state.spec ? JSON.stringify(state.spec) : null;
   state.spec = draftToSpec(state.draft);
   const { level, results, spec } = safeValidate(state.spec);
   state.spec = spec;
   state.level = level;
   state.validation = results;
   state.buildError = results.find((r) => r.level === 'error' && r.name.startsWith('the level builds'))?.message ?? null;
+  recordHistory(before, JSON.stringify(state.spec));
   render();
   renderPanels();
   autosave();
@@ -288,6 +404,7 @@ function render() {
     ctx.font = '13px ui-monospace, monospace';
     ctx.textAlign = 'center';
     ctx.fillText(state.buildError ?? 'the draft does not build', canvas.clientWidth / 2, canvas.clientHeight / 2);
+    renderFoot();
     return;
   }
   const layout = computeLayout(state.level, canvas);
@@ -304,6 +421,9 @@ function render() {
     plateDraft: state.plateDraft,
     selection: state.selection,
   });
+  //  The footer carries the live cursor readout, so it has to be refreshed with the canvas, not
+  //  only when a panel rebuilds.
+  renderFoot();
 }
 
 let rafHandle = 0;
@@ -331,12 +451,52 @@ function renderPanels() {
   el['nl-hint'].value = state.draft.hint;
   el['chk-open'].checked = !!state.draft.openEdges;
   el['chk-moving'].checked = !!state.draft.movingPitVisual;
+  renderIdNote();
 
   renderValidation();
   renderObjects();
   renderProps();
   renderExport();
   renderFoot();
+}
+
+/** The key that selects each paint cell, matching the keydown map in `wireCanvas`. */
+const PAINT_KEY = { floor: 'f', wall: 'w', ice: 'i', sand: 's', steel: 't', belt: 'c', vent: 'v' };
+
+/** A little key-cap badge, so the shortcuts are visible on the tools themselves. */
+function kbd(text) {
+  const k = document.createElement('kbd');
+  k.textContent = text;
+  return k;
+}
+
+const OBJECT_LABEL = Object.fromEntries(OBJECT_LISTS.map(([n, lbl]) => [n, lbl]));
+
+/** What the current selection is, as a short phrase for the footer. */
+function selectionLabel() {
+  const s = state.selection;
+  if (!s) return '';
+  if (s.list === '__spawn') return `marble ${s.index + 1}`;
+  if (s.list === '__goal') return 'goal cup';
+  if (s.list === '__pit') return 'pit';
+  if (s.list === '__plate') return state.draft.plates?.[s.index]?.mat ?? 'plate';
+  const o = state.draft[s.list]?.[s.index];
+  const kind = OBJECT_LABEL[s.list] ?? s.list;
+  return o?.id ? `${kind} '${o.id}'` : kind;
+}
+
+/** Warn when the draft's id would collide with a shipped level. */
+function renderIdNote() {
+  const note = el['id-note'];
+  if (!note) return;
+  const id = (state.draft.id ?? '').trim();
+  if (id && isShipped(id)) {
+    note.textContent = `‘${id}’ is a shipped level id — exporting and pasting this would replace that level.`;
+    note.classList.add('warn');
+  } else {
+    note.textContent = '';
+    note.classList.remove('warn');
+  }
 }
 
 function renderFoot() {
@@ -347,11 +507,36 @@ function renderFoot() {
     `board <b>${cells}</b>`,
     `walls <b>${state.level ? state.level.segments.length : 0}</b>`,
     `pits <b>${state.level ? state.level.pits.length : 0}</b>${slots ? ` (${slots} slot${slots === 1 ? '' : 's'})` : ''}`,
-    `snap <b>${state.snap === 1 ? 'cell' : state.snap}</b>${state.at ? ` at <b>${state.at[0]}, ${state.at[1]}</b>` : ''}`,
-    `<span class="badge ${errors ? 'err' : 'ok'}">${errors} error${errors === 1 ? '' : 's'}</span>`,
-    warnings ? `<span class="badge warn">${warnings} warning${warnings === 1 ? '' : 's'}</span>` : '',
+    `snap <b>${state.snap === 1 ? 'cell' : state.snap}</b>`,
   ];
+  //  What is actually under the cursor, not just where it is: the plan view is a diagram and the
+  //  char under the pointer is the ground truth for "did I paint the right thing".
+  if (state.at && state.level) {
+    const ch = charAt(state.draft, cellIndex(state.at[0]), cellIndex(state.at[1]));
+    bits.push(`at <b>${state.at[0]}, ${state.at[1]}</b> · <b>${charName(ch)}</b>`);
+  }
+  if (state.selection) bits.push(`selected <b>${selectionLabel()}</b>`);
+  bits.push(`<span class="badge ${errors ? 'err' : 'ok'}">${errors} error${errors === 1 ? '' : 's'}</span>`);
+  if (warnings) bits.push(`<span class="badge warn">${warnings} warning${warnings === 1 ? '' : 's'}</span>`);
   el['stagefoot'].innerHTML = bits.filter(Boolean).join(' &nbsp;·&nbsp; ');
+}
+
+/** The header's one live verdict chip: colour carries the state, the text carries the count. */
+function updateStatusChip() {
+  const chip = el['status-chip'];
+  if (!chip) return;
+  const { errors, warnings } = summarise(state.validation);
+  chip.classList.remove('ok', 'warn', 'err');
+  if (errors) {
+    chip.classList.add('err');
+    chip.textContent = `✗ ${errors} error${errors === 1 ? '' : 's'}`;
+  } else if (warnings) {
+    chip.classList.add('warn');
+    chip.textContent = `! ${warnings} warning${warnings === 1 ? '' : 's'}`;
+  } else {
+    chip.classList.add('ok');
+    chip.textContent = '✓ draft is valid';
+  }
 }
 
 function renderValidation() {
@@ -359,6 +544,7 @@ function renderValidation() {
   root.innerHTML = '';
   const { errors, warnings } = summarise(state.validation);
   el['valid-count'].textContent = `${errors} error${errors === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'}`;
+  updateStatusChip();
   const order = { error: 0, warning: 1, ok: 2 };
   const sorted = [...state.validation].sort((a, b) => order[a.level] - order[b.level]);
   for (const r of sorted) {
@@ -1135,7 +1321,11 @@ let exportCache = { source: '', json: '' };
 function renderExport() {
   if (!state.spec) return;
   exportCache = { source: specToSource(state.spec), json: specToJson(state.spec) };
-  el['export-text'].value = state.exportTab === 'json' ? exportCache.json : exportCache.source;
+  const json = state.exportTab === 'json';
+  const text = json ? exportCache.json : exportCache.source;
+  el['export-text'].value = text;
+  const lines = text ? text.split('\n').length : 0;
+  el['export-info'].textContent = `${json ? 'JSON' : 'LEVELS entry'} · ${lines} line${lines === 1 ? '' : 's'} · ${text.length} chars`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1147,14 +1337,14 @@ function buildToolbars() {
   palette.innerHTML = '';
   //  The pit brush comes first: it is the one tool that paints positions rather than cells.
   const pitBtn = document.createElement('button');
-  pitBtn.title = PIT_TOOL.hint;
+  pitBtn.title = `${PIT_TOOL.hint} (key: o)`;
   pitBtn.dataset.tool = PIT_TOOL.id;
   const pitSw = document.createElement('span');
   pitSw.className = 'swatch';
   pitSw.style.background = COLORS.o;
   const pitLabel = document.createElement('span');
   pitLabel.textContent = PIT_TOOL.label;
-  pitBtn.append(pitSw, pitLabel);
+  pitBtn.append(pitSw, pitLabel, kbd('o'));
   pitBtn.onclick = () => selectTool({ kind: 'pit' });
   palette.appendChild(pitBtn);
 
@@ -1179,17 +1369,22 @@ function buildToolbars() {
     palette.appendChild(b);
   }
 
+  const cellsHead = document.createElement('div');
+  cellsHead.className = 'palette-head';
+  cellsHead.textContent = 'cells — click or drag to paint';
+  palette.appendChild(cellsHead);
   for (const p of PAINT_CELLS) {
     const b = document.createElement('button');
-    b.title = `${p.label} — ${p.hint}`;
+    const k = PAINT_KEY[p.id];
+    b.title = `${p.label} — ${p.hint}${k ? ` (key: ${k})` : ''}`;
     b.dataset.tool = p.id;
     const sw = document.createElement('span');
     sw.className = 'swatch';
     sw.style.background = COLORS[p.char] ?? '#888';
     const t = document.createElement('span');
-
     t.textContent = p.label;
     b.append(sw, t);
+    if (k) b.append(kbd(k));
     b.onclick = () => selectTool({ kind: 'cell', id: p.id });
     palette.appendChild(b);
   }
@@ -1224,6 +1419,8 @@ function buildToolbars() {
   }
 
   const sel = el['btn-select'];
+  sel.replaceChildren(document.createTextNode('select / edit'), kbd('Esc'));
+  sel.title = 'Click obstacles to edit them (key: Esc) — drag a marble, the cup or a cell obstacle to move it';
   sel.onclick = () => selectTool({ kind: 'select' });
 
   const dirBtns = el['dir-buttons'];
@@ -1293,8 +1490,21 @@ function syncPitRadius() {
   el['pit-radius-out'].textContent = Number(state.draft.pitRadius ?? 0.42).toFixed(2);
 }
 
+/** The active tool's name, shown as a chip beside the guidance. */
+function toolTitle(t) {
+  if (!t) return '—';
+  if (t.kind === 'pit') return 'pit / slot';
+  if (t.kind === 'plate') return `${t.mat} plate`;
+  if (t.kind === 'cell') return PAINT_CELLS.find((p) => p.id === t.id)?.label ?? t.id;
+  if (t.kind === 'object') return OBJECT_CELLS.find((o) => o.id === t.id)?.label ?? t.id;
+  if (t.kind === 'pair') return PAIR_OBJECTS.find((o) => o.id === t.id)?.label ?? t.id;
+  if (t.kind === 'erase') return 'erase';
+  return 'select / edit';
+}
+
 function hint() {
   const t = state.tool;
+  el['tool-name'].textContent = toolTitle(t);
   let text = '';
   if (t.kind === 'pit') {
     const step = state.snap === 1 ? 'cell centres' : `${state.snap} of a cell`;
@@ -1557,6 +1767,32 @@ function selectAt(at) {
   renderProps();
 }
 
+/**
+ * Delete whatever is selected, if the kind can be deleted at all. The goal cup cannot (the level
+ * needs one), and neither can the last marble; both return false rather than half-deleting.
+ */
+function deleteSelection() {
+  const s = state.selection;
+  if (!s) return false;
+  if (s.list === '__goal') return false;
+  if (s.list === '__spawn') {
+    if (!removeSpawn(state.draft, s.index)) return false;
+  } else if (s.list === '__pit') {
+    if (!state.draft.pits[s.index]) return false;
+    state.draft.pits.splice(s.index, 1);
+  } else if (s.list === '__plate') {
+    if (!removePlate(state.draft, s.index)) return false;
+  } else {
+    const arr = state.draft[s.list];
+    if (!Array.isArray(arr) || !arr[s.index]) return false;
+    arr.splice(s.index, 1);
+  }
+  state.selection = null;
+  rebuild();
+  renderObjects();
+  return true;
+}
+
 function wireCanvas() {
   const canvas = el['board'];
   const isErase = (ev) => ev.button === 2 || ev.altKey;
@@ -1568,6 +1804,10 @@ function wireCanvas() {
     const at = eventAt(ev);
     if (!cell || !at) return;
     canvas.setPointerCapture(ev.pointerId);
+    //  One undo entry per gesture: `recordHistory` keeps the spec from before the first mutation
+    //  of this drag and ignores the rest, so a painted stroke undoes in one step.
+    gestureActive = true;
+    gestureRecorded = false;
     const erase = isErase(ev);
     const t = state.tool;
     if (t.kind === 'pair') {
@@ -1719,6 +1959,8 @@ function wireCanvas() {
       rebuild();
     }
     if (ev.pointerId !== undefined && canvas.hasPointerCapture?.(ev.pointerId)) canvas.releasePointerCapture(ev.pointerId);
+    gestureActive = false;
+    gestureRecorded = false;
   };
   canvas.addEventListener('pointerup', end);
   canvas.addEventListener('pointercancel', end);
@@ -1731,18 +1973,46 @@ function wireCanvas() {
   window.addEventListener('resize', () => render());
   window.addEventListener('keydown', (ev) => {
     if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement) return;
+    const mod = ev.metaKey || ev.ctrlKey;
+    // Undo / redo first, so a browser default is never the thing that happens.
+    if (mod && ev.key.toLowerCase() === 'z') {
+      ev.preventDefault();
+      if (ev.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (mod && ev.key.toLowerCase() === 'y') {
+      ev.preventDefault();
+      redo();
+      return;
+    }
+    if (mod) return;
     if (ev.key === 'Escape') {
       if (state.pending) {
         state.pending = null;
         hint();
         render();
+      } else if (state.selection) {
+        //  Escape drops the selection before it changes tools, so a stray click is reversible
+        //  without leaving the tool you are painting with.
+        state.selection = null;
+        renderObjects();
+        renderProps();
+        scheduleRender();
       } else {
         selectTool({ kind: 'select' });
       }
+      return;
+    }
+    if (ev.key === 'Delete' || ev.key === 'Backspace') {
+      if (deleteSelection()) ev.preventDefault();
+      return;
     }
     const k = ev.key.toLowerCase();
     const byKey = { f: 'floor', w: 'wall', i: 'ice', s: 'sand', t: 'steel', c: 'belt', v: 'vent' };
     if (k === 'o') selectTool({ kind: 'pit' });
+    else if (k === 'g') selectTool({ kind: 'object', id: 'goal' });
+    else if (k === 'e') selectTool({ kind: 'erase' });
     else if (byKey[k]) selectTool({ kind: 'cell', id: byKey[k] });
   });
 }
@@ -1887,17 +2157,19 @@ function wireControls() {
   });
   el['chk-showoks'].addEventListener('change', renderValidation);
 
-  // Deliberately inert: see the solver note above. The button exists so the absence is
-  // visible rather than mysterious.
-  el['btn-solve'].onclick = () => {
-    el['solver-note'].scrollIntoView({ block: 'nearest' });
-  };
+  el['btn-undo'].onclick = undo;
+  el['btn-redo'].onclick = redo;
+  el['status-chip'].onclick = () => el['ledger'].scrollIntoView({ block: 'start' });
   el['btn-new'].onclick = () => {
     if (!confirm('Start a new blank level? The current draft stays in browser storage.')) return;
     state.draft = blankDraft({ id: `level-${Date.now().toString(36)}`, name: 'New Level' });
     rebuild();
   };
   el['btn-validate'].onclick = () => rebuild();
+
+  //  The id is what a saved best and a `?level=` URL point at, so it matters when an id collides
+  //  with a shipped level: exporting and pasting it would replace that level.
+  el['nl-id'].addEventListener('input', () => renderIdNote());
   el['btn-save'].onclick = saveDraft;
   //  Playing flushes the working draft into the session slot and hands off to the game itself
   //  (`index.html?draft=session`), so there is exactly one play path and it is the shipped one.
@@ -2068,6 +2340,13 @@ window.__editor = {
   },
   selectTool,
   rebuild,
+  // Editing actions, so a browser check can drive the editor the same way the buttons do.
+  undo,
+  redo,
+  deleteSelection,
+  get history() {
+    return { past: history.length, future: future.length };
+  },
   // Marble helpers, so a browser check can place and move marbles the same way the tools do.
   spawnsOf,
   addSpawn,

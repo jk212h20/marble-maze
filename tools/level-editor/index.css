@@ -101,6 +101,81 @@ aside h2 {
 }
 aside h2:first-child { margin-top: 0; }
 
+/*
+ *  Section headers in the right column stick to the top as it scrolls. The right column is long
+ *  (rules, obstacles, properties, export, import, drafts) and without this you lose track of which
+ *  section you are editing in as soon as you scroll to the export box.
+ */
+aside.right h2.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+  padding: 4px 0 5px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* The header's live verdict chip: a button, but it reads as a status pill. */
+button.chip {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  background: var(--panel2);
+}
+button.chip.ok { color: var(--ok); border-color: #2c6b4c; }
+button.chip.warn { color: var(--warn); border-color: #6b5a2a; }
+button.chip.err { color: var(--err); border-color: #6b3a30; }
+
+/* The tool guidance bar under the board. */
+#stagehelp {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--panel2);
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 30px;
+}
+#stagehelp .tool {
+  flex: none;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+#stagehelp #tool-hint { min-width: 0; }
+
+/* Key caps: on the tools, and in the shortcuts legend. */
+kbd {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ink);
+  background: #12141a;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin-left: auto;
+  flex: none;
+}
+
+.keys { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+.keys li { display: flex; align-items: baseline; gap: 6px; }
+.keys li kbd { margin-left: 0; min-width: 62px; text-align: center; }
+.keys li span { min-width: 0; }
+
+.idnote.warn { color: var(--warn); }
+.idnote { margin: 2px 0 0; }
+
 .palette { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 
 .palette button, .toolgrid button {
@@ -179,6 +254,20 @@ aside h2:first-child { margin-top: 0; }
 
 .checks { display: grid; gap: 3px; margin: 6px 0; font-size: 12px; color: var(--muted); }
 .checks label { display: flex; gap: 6px; align-items: center; }
-.bar a.play { background: #1f6b52; border: 1px solid #2c8a6a; color: #dff5ec; padding: 4px 10px; border-radius: 6px; text-decoration: none; font-family: inherit; }
+/*  The play link lives in the header (`header.top`), not in a `.bar`; the bare `.bar` selector
+ *  meant it rendered as an unstyled link. Style both so it always reads as the primary action. */
+header.top a.play,
+.bar a.play {
+  background: #1f6b52;
+  border: 1px solid #2c8a6a;
+  color: #dff5ec;
+  padding: 4px 10px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-family: inherit;
+  white-space: nowrap;
+}
+header.top a.play:hover,
+.bar a.play:hover { background: #25805f; }
 
 .palette-head { grid-column: 1 / -1; margin-top: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #9aa2b1; }

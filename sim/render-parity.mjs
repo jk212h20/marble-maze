@@ -63,34 +63,55 @@ async function resolveUrl() {
   });
 }
 
+const NAV_TIMEOUT = Number(process.env.MM_NAV_TIMEOUT ?? 150000);
+
 const { url, server } = await resolveUrl();
 const browser = await chromium.launch({
   args: ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--ignore-gpu-blocklist'],
 });
 
+const DRAFT_KEY = 'marblemaze.level-editor.drafts.v1';
+const SESSION_KEY = 'last session (auto)';
 const problems = [];
 let checked = 0;
 
+//  ONE page for every fixture, seeded and navigated again each time.
+//
+//  The first version gave each fixture its own context and page, which is what sim/smoke.mjs does
+//  for its single extra board. Five live software-GL contexts in a row is a different animal: on
+//  the CI runner the later boots did not finish, and the job sat in the same step for ten minutes.
+//  Re-using the page costs one navigation per fixture and never has two GL contexts alive.
 try {
+  const context = await browser.newContext({ viewport: { width: 900, height: 620 } });
+  const page = await context.newPage();
+  page.setDefaultTimeout(Number(process.env.MM_BROWSER_TIMEOUT ?? 180000));
+  const pageErrors = [];
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  page.on('console', (m) => {
+    if (m.type() === 'error') pageErrors.push(m.text());
+  });
+  const draftUrl = new URL('/index.html?draft=session', url).href;
+
   for (const fixture of chosen) {
     const names = fixture.expect.map((e) => e.objectName).filter(Boolean);
-    const context = await browser.newContext({ viewport: { width: 900, height: 620 } });
-    await context.addInitScript(
-      ([key, sessionKey, spec]) => {
-        localStorage.setItem(key, JSON.stringify({ [sessionKey]: spec }));
-      },
-      ['marblemaze.level-editor.drafts.v1', 'last session (auto)', fixture.spec],
-    );
-    const page = await context.newPage();
-    page.setDefaultTimeout(Number(process.env.MM_BROWSER_TIMEOUT ?? 180000));
-    const pageErrors = [];
-    page.on('pageerror', (e) => pageErrors.push(e.message));
-    page.on('console', (m) => {
-      if (m.type() === 'error') pageErrors.push(m.text());
-    });
+    process.stdout.write(`\n${fixture.id} ... `);
+    //  Seed the draft slot the game reads on load, then navigate again. Written before every
+    //  fixture, so one board's spec can never be read by the next one.
+    if (page.url().startsWith('http')) {
+      await page.evaluate(
+        ([key, session, spec]) => localStorage.setItem(key, JSON.stringify({ [session]: spec })),
+        [DRAFT_KEY, SESSION_KEY, fixture.spec],
+      );
+    } else {
+      await page.goto(url, { waitUntil: 'load', timeout: NAV_TIMEOUT });
+      await page.evaluate(
+        ([key, session, spec]) => localStorage.setItem(key, JSON.stringify({ [session]: spec })),
+        [DRAFT_KEY, SESSION_KEY, fixture.spec],
+      );
+    }
+    pageErrors.length = 0;
 
-    const draftUrl = new URL('/index.html?draft=session', url).href;
-    await page.goto(draftUrl, { waitUntil: 'load', timeout: 180000 });
+    await page.goto(draftUrl, { waitUntil: 'load', timeout: NAV_TIMEOUT });
     await page.waitForFunction('window.__maze && window.__maze.version === 1', null, { timeout: 120000 });
     await page.waitForTimeout(900);
 
@@ -173,9 +194,8 @@ try {
       if (!ok) problems.push(`${fixture.id}/${e.key}: not rendered (${detail})`);
     }
 
-    console.log(`\n${fixture.id} — ${fixture.what}`);
+    console.log(`— ${fixture.what}`);
     console.log(lines.join('\n'));
-    await context.close();
   }
 } finally {
   await browser.close();
