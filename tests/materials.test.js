@@ -288,6 +288,21 @@ export const tests = (t) => {
     if (surfaceOf(withPlate, 7, 3) !== 'ice') throw new Error('the plate is not ice where it says it is');
   });
 
+  t.ok('a pressure button sits on any ground without erasing it, like a pit', () => {
+    //  A button used to PAINT its cell, so a button placed on ice deleted the ice. It is an object
+    //  on top of the ground now: the ground, and the surface the marble feels, are untouched.
+    const lv = build({
+      ice: [[3, 3, 8, 5]],
+      buttons: [{ id: 'p1', cell: [4.5, 4], metal: 'copper' }],
+    });
+    if (lv.grid[4][5] !== ICE) throw new Error(`the button erased the ground (cell is '${lv.grid[4][5]}')`);
+    if (surfaceOf(lv, 5, 4) !== 'ice') throw new Error('the button changed the surface the marble feels');
+    const p = lv.features.plates[0];
+    if (p.metal !== 'copper') throw new Error(`the button metal was ${p.metal}`);
+    if (p.cell[0] !== 5 || p.cell[1] !== 4) throw new Error(`the button covering cell is ${p.cell}`);
+    if (Math.abs(p.x - (4.5 + 0.5 - lv.w / 2)) > 1e-9) throw new Error('the button is not on its authored coordinate');
+  });
+
   t.ok('the plate outline matches its lattice exactly', () => {
     // The outline the renderer extrudes is the region's own boundary, so its area must equal the
     // lattice area it came from — otherwise something is drawn that the marble does not feel.

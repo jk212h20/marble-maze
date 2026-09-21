@@ -20,8 +20,9 @@ full `index.html` path — `/tools/level-editor/` on its own is a directory, not
 ## What it does
 
 - **Paint the board** with the obstacle vocabulary: floor, wall, ice, sand, steel, conveyor,
-  fan/vent, pressure plate. Click and drag; right-drag erases. The paint grid is per *cell* —
-  you cannot have half a wall cell, and the engine agrees.
+  fan/vent. Click and drag; right-drag erases. The paint grid is per *cell* — you cannot have
+  half a wall cell, and the engine agrees. (A pressure **button** is an object, not a paint:
+  see below.)
 - **Material plates** place ice, sand or steel on a *rectangle* instead of on cells, with edges
   snapped to the authoring grid — so materials can be aligned to an eighth of a cell too, and a
   plate can end halfway along a cell. See *Materials* below.
@@ -52,16 +53,23 @@ full `index.html` path — `/tools/level-editor/` on its own is a directory, not
   familiar `spawn: [c, r]`. Every marble must reach the cup to win, so the ledger checks each
   one: walkable floor, a route to the goal, no pit beneath it, and a par that covers the
   longest marble's route.
-- **Place objects**: goal cup, bumper posts, windmills, pendulums, magnets, plates (→ a gate,
-  or → **lift walls**), sliding bars, teleport pairs, gates, lift walls, one-way flaps. The cup
-  and a cell obstacle can be dragged too, so any single-point object repositions the same way a
-  marble does.
+- **Place objects**: goal cup, bumper posts, windmills, pendulums, magnets, **pressure buttons**
+  (→ a gate, and/or → **lift walls**), sliding bars, teleport pairs, gates, lift walls, one-way
+  flaps. The cup and a cell obstacle can be dragged too, so any single-point object repositions
+  the same way a marble does.
+- **Pressure buttons.** The **Pressure button** object is a raised circular metal button, placed
+  on the authoring grid like a pit — so it may sit on a fraction of a cell, and it sits *on* any
+  ground (ice, sand, steel, a material plate, plain floor) without erasing it. Its property sheet
+  sets its `id`, its optional `gate`, and its **metal** (`brass`, default, or `steel`, `copper`,
+  `gunmetal`, `bronze`, `gold`), which is the finish of the button *and* of every lift wall it
+  drives. The plan view draws it as a metal disc.
 - **Lifts.** The **Lift wall** tool clicks the two ends of a slab, then the property sheet picks
-  which plate drives it and which way: *lowers (wall rests up)* for a door that sinks while the
-  plate is held, or *raises (wall rests flush)* for a bar that stands up while it is held. A
-  plate needs an `id` for a lift to name it — the plate tool assigns one (`p1`, `p2`, …) — and a
-  plate with no gate at all is valid: it just drives its lifts. The plan view draws each slab in
-  its mode's colour with a dashed link to its plate.
+  which button drives it and which way: *lowers (wall rests up)* for a door that sinks while the
+  button is held, or *raises (wall rests flush)* for a wall that stands up while it is held. A
+  button needs an `id` for a lift to name it — the button tool assigns one (`p1`, `p2`, …) — and a
+  button with no gate at all is valid: it just drives its lifts. The plan view draws each slab as
+  a **metal** band along its own segment (the line the marble collides with), with a *dashed* core
+  line in the mode's cue colour and a dashed link to its button.
 - **See what the engine sees.** The canvas is drawn from `buildLevel()` output, not from the
   paint grid, so the automatic rim wall, the drawn hole radii and every disc size are honest.
   Board-edge cells always become wall, and the editor says so when it happens.
@@ -133,8 +141,9 @@ Every position in a level spec is in **cell space**, where an integer is the cen
 cell: `3.5` sits on the edge between cells 3 and 4, and `3.125` is an eighth of a cell past
 cell 3's centre. The engine accepts fractions wherever an object sits —
 `{ cell: [11.375, 8.625] }`, `{ a: [1.125, 4.5], b: [8.5, 3.125] }` — and rounds to the
-containing cell only where it has to mark a grid character (a pad, a plate, the spawn, the
-cup, and the cells a pit blocks).
+containing cell only where it has to mark a grid character (a pad, the spawn, the cup, and the
+cells a pit blocks). A pressure **button** is an object like a pit, so it records its own
+authored position and never paints the grid — it can sit on any ground without erasing it.
 
 A slot is one pit with a chain of centres:
 

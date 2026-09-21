@@ -163,8 +163,13 @@ export function tests(t) {
     near(lv.features.plates[0].x, world(4.625)[0], 'plate x');
     near(lv.features.magnets[0].z, world(0, 3.125)[1], 'magnet z');
     near(lv.features.gates[0].segments[0].a[0], world(2.375)[0], 'gate segment x');
-    // and the grid still gets the integer cell that contains each fractional coordinate
-    if (lv.grid[2][5] !== 'b') throw new Error(`the plate did not land on cell 5,2 (found '${lv.grid[2][5]}')`);
+    // A button is an OBJECT, like a pit, not a painted cell: it sits on whatever ground it was
+    // placed on, so it records its own covering cell and leaves the grid's floor alone. The pads
+    // are still painted into the grid, exactly as they always were.
+    if (lv.features.plates[0].cell[0] !== 5 || lv.features.plates[0].cell[1] !== 2) {
+      throw new Error(`the plate's covering cell is ${lv.features.plates[0].cell}`);
+    }
+    if (lv.grid[2][5] !== '.') throw new Error(`the plate replaced the ground on its own cell ('${lv.grid[2][5]}')`);
     if (lv.grid[5][1] !== 'p' || lv.grid[3][9] !== 'p') throw new Error('the pads did not land on their covering cells');
   });
 

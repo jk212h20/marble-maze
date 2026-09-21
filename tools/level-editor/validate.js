@@ -22,6 +22,9 @@ import { roseDesign, roseReach, roseProblems, roseHoles } from '../../src/engine
 import { BALL_R, GOAL_HOLE_R, LID_BEZEL } from '../../src/engine/constants.js';
 import { chainCellDistance } from '../../src/engine/levels.js';
 import { charAt, draftToSpec, chainDistance, isSlot, pointInPlate, spawnsOf, MIN_SPAWN_GAP } from './model.js';
+import { METALS } from '../../src/engine/metals.js';
+
+const METAL_IDS = new Set(METALS.map((m) => m.id));
 
 /** The grid cell a fractional cell-space coordinate sits in. */
 const cover = ([c, r]) => [Math.floor(c + 0.5), Math.floor(r + 0.5)];
@@ -377,6 +380,14 @@ export function validateDraft(draft) {
   const dupPlateIds = [...(lv.spec.buttons ?? []).reduce((m, b) => (b.id ? m.set(b.id, (m.get(b.id) ?? 0) + 1) : m), new Map())].filter(([, n]) => n > 1);
   if (dupPlateIds.length) fail('plate ids are unique', dupPlateIds.map(([id, n]) => `'${id}' appears ${n} times`).join('; '));
   else pass('plate ids are unique');
+
+  //  A button is an object, not a painted cell: it may sit on any ground (ice, sand, steel, a
+  //  material plate, plain floor). What must hold is the metal it names - the finish of the button
+  //  AND of every wall it drives - because a wall cannot be cut from a metal that does not exist.
+  //  (A button buried in a wall is already a buildLevel() error, checked above.)
+  const badMetal = (lv.spec.buttons ?? []).filter((b) => b.metal && !METAL_IDS.has(b.metal));
+  if (badMetal.length) soft('every button names a metal that exists', badMetal.map((b) => `button ${b.id ?? ''} names '${b.metal}'`).join('; '));
+  else pass('every button names a metal that exists');
 
   const lifts = lv.spec.lifts ?? [];
   const missingPlates = lifts.filter((l) => !l.plate);

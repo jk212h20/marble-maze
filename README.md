@@ -6,9 +6,11 @@ and holes, bumpers and gates do the rest. Runs in the browser, no build step.
 **Status:** the engine, the level format and the obstacle vocabulary are built and tested.
 **Levels 1–4 are authored and verified**, under a glass lid with a central grip:
 **1 First Tilt**, **2 Peg Board**, **3 Twin Track**, and **4 Both Locks** — the two-marble levels,
-where both marbles must reach the cup. Both Locks adds a plate that works **two wall slabs at
-once**: a marble stands on the plate, which sinks one door and raises the other, so holding the
-door for your neighbour bars your own. The slate from level 5 on is a proposal (see below and in
+where both marbles must reach the cup. Both Locks adds a raised metal pressure button that works
+**two metal wall slabs at once**: a marble stands on the button, which sinks one door and raises
+the other, so holding the door for your neighbour bars your own. The slabs climb out of routed
+slots in the floor, and both of them are cut from the button's own metal — see *Pressure buttons
+and lift walls* below. The slate from level 5 on is a proposal (see below and in
 game: *levels → Planned slate*) and is deliberately not built yet.
 
 ## Multiple marbles
@@ -47,6 +49,32 @@ and accept `--url` (or `MM_URL`) to point elsewhere.
 - Holes end the attempt (falls are counted, the marble respawns and the timer keeps running).
   The brass-ringed cup is the goal.
 - **show me** (or `D`) hands the board to the tilt autopilot and plays the level in front of you.
+
+## Pressure buttons and lift walls
+
+A **pressure button** is a raised circular metal button — a dark routed seat, a short metal body
+and a brighter cap — not a flat plate painted into the floor. It is authored like a pit: in cell
+space, so it may sit on a fraction of a cell, and it sits **on** whatever ground is there instead
+of replacing it. A button on ice is still ice: the marble feels the ice right up to the button's
+edge.
+
+A button drives either or both of:
+
+- a named **gate**, which opens while the button is held; and
+- any number of **lift walls** — metal wall slabs that climb out of a routed slot in the floor
+  while the button is held (mode `raise`, rest flush) or sink into the floor while it is held
+  (mode `lower`, rest raised). A lift has no timer: its height is exactly what the button's state
+  says, so a marble standing on the button holds the wall where it is.
+
+A slab is a wall, not a line: as long as its authored segment, as wide as a wall cell and as tall
+as a wall, and it runs **along** its segment — the same line the marble collides with, so what you
+see is what you hit. Each button and every wall it drives are cut from the same **metal**:
+`brass` (the default), `steel`, `copper`, `gunmetal`, `bronze` or `gold`, chosen per button in the
+level editor. The table lives in `src/engine/metals.js`.
+
+While a slab is on its way **up**, a marble sitting on it is pushed off toward whichever side of
+the slab the marble is more on, instead of being left standing inside it. A slab on its way
+**down** does not push; it sinks out from under whatever is riding it.
 
 ## Tuning the feel
 
@@ -115,7 +143,7 @@ cannot quietly make a level unplayable.
 ## Testing
 
 ```bash
-npm test                # 213 headless checks: physics, level structure, tuning, profiles, solvability, marbles
+npm test                # 219 headless checks: physics, level structure, tuning, profiles, solvability, marbles
 node sim/smoke.mjs      # real browser: loads the page, drives it, screenshots, times frames
 node sim/tune-check.mjs # real browser: proves the tuning panel changes the simulation,
                         # that the range modes widen the sliders, that profiles reload, that
@@ -150,10 +178,12 @@ so it proves each sound is audible and correctly panned without anyone having to
 - **`tests/solver.test.js`** — a **tilt-only autopilot** (it may move the board, never the
   marble) finishes the level from the spawn without a single fall, and can still get home
   after being jammed into a corner. This is the honest answer to "is the level playable?".
-- **`tests/lifts.test.js`** — a plate lowers a resting wall, raises a flush one, and lets both
-  return to rest when it is left; and the shipped cooperative level `both-locks` is finished by
-  a scripted two-marble plan while the greedy order (send the holder home first) is shown to
-  strand the other marble, which is what makes the plate load-bearing.
+- **`tests/lifts.test.js`** — a button lowers a resting wall, raises a flush one, and lets both
+  return to rest when it is left; each wall takes the metal of the button that drives it; a wall
+  still on its way up pushes a marble off toward whichever side the marble is more on; and the
+  shipped cooperative level `both-locks` is finished by a scripted two-marble plan while the
+  greedy order (send the holder home first) is shown to strand the other marble, which is what
+  makes the button load-bearing.
 
 Physics tests cover the specifics: no tunnelling at full tilt for a minute, deterministic
 replays, pit capture, cup capture, wall bounce, ice vs sand, pegs (including that a peg never
@@ -172,12 +202,12 @@ index.html            page + import map (three.js is vendored, no bundler)
 styles.css            HUD, menus, overlays
 src/engine/           pure, node-testable simulation — no three.js, no DOM
   constants.js        all tuning in one place
-  levels.js           level DSL + Levels 1-3
+  levels.js           level DSL + Levels 1-4
   physics.js          marble on a tilting board, walls, pits, obstacles
   silhouette.js       board outline extraction (used by the renderer and by tests)
   pathfind.js         cell graph: route finding, solvability
   autopilot.js        tilt-only solver: tests + the in-game "show me"
-  slate.js            the proposed levels 4-10, shown in the menu
+  slate.js            the proposed levels 5-12, shown in the menu
 src/render/           three.js presentation (board, obstacles, marble, particles)
   wood-uv.js          projects every wood surface onto the board plane, so the grain runs off
                       the floor and down the inside of a hole (see docs/DESIGN.md)
@@ -245,7 +275,7 @@ Six marbles ship, chosen from the tuning sheet's **Marble** group or by `?marble
 | **Cat's-eye** | the shipped swirl, painted on one sphere. The reference, and free | — |
 | **Lantern** | lights inside — glowing beads, additive halos, a **real point light** — plus subsurface bands that cut its own glow as they turn past | one transmission pass |
 | **Solid** | opaque banded stone in **any colour you pick** | — |
-| **Earth** | the blue planet, in three maps: coastal turquoise falling away to abyssal dark, desert and rainforest and taiga, mountain belts with real relief, ice caps and Greenland, islands from Britain to New Zealand, and weather in the belts where weather belongs. The sea is the only glossy part, so the key light sweeps across the water as it rolls | — |
+| **Earth** | the blue planet, in three maps: coastal turquoise falling away to abyssal dark, desert and rainforest and taiga, mountain belts with real relief, ice caps and Greenland, islands from Britain to New Zealand — and **weather on its own layer**, drifting across the continents as the marble rolls. The sea is the only glossy part, so the key light sweeps across the water | one extra transparent sphere |
 | **Moon** | grey highlands under maria under a whole crater field, with the craters cut in as **relief** as well as shade, so a rim catches the light | — |
 | **Eight ball** | polished black, the 8 in its white circle | — |
 
@@ -275,12 +305,23 @@ them. Three details are worth knowing:
   number drives coastal turquoise → shelf blue → abyssal dark. It is most of what makes the water
   read as *water* rather than as blue paint, and no amount of coastline detail substitutes for it.
   Its grid is square on the globe (0.3516° both ways), so cells become kilometres with one multiply.
-- **Its land has relief and weather, from the same place-not-pixel rule.** Ridged noise gated by a
-  belt mask gives mountain chains that stand proud in the bump map, and cloud is laid over the
-  equatorial convergence and the storm belts. Both are precomputed fields sampled bilinearly: paying
-  for four fbm octaves at every pixel of a 1536×768 map would be most of a second's work for detail
-  no eye could find. The Earth costs about 320 ms to build the first time (fields and map together,
-  fields then cached) and ~200 ms to rebuild after that — the same shape as the Moon's craters.
+- **Its land has relief, from the same place-not-pixel rule.** Ridged noise gated by a belt mask
+  gives mountain chains that stand proud in the bump map. It is a precomputed field sampled
+  bilinearly: paying for four fbm octaves at every pixel of a 1536×768 map would be most of a
+  second's work for detail no eye could find. The Earth costs about 320 ms to build the first time
+  (fields and map together, fields then cached) and ~200 ms to rebuild after that — the same shape as
+  the Moon's craters.
+- **The weather is its own layer, and it moves.** Cloud is not painted into the albedo, because baked
+  cloud is welded to the ground. It is a **second shell over the same sphere at the same radius**,
+  carrying cloud white in RGB and coverage in its alpha, that turns at its own speed (~0.1 rad/s, a
+  turn a minute) on top of the roll the physics gives the marble it rides in. Two coincident spheres
+  would z-fight, so the cloud material is nudged a hair toward the camera in the depth test
+  (`polygonOffset`) — a screen-space nudge in the depth buffer, not a change to any geometry. It
+  writes no depth and casts no shadow: a shadow map does not read alpha, and a transparent sphere
+  would otherwise darken the board a second time. **Cosmetic only**: the marble's radius, its scale
+  and everything the engine simulates come from the same numbers as every other marble, and a test
+  holds the cloud shell to *exactly* the surface's sphere, so the marble's size can never be read off
+  the weather.
 
 ### The clear-glass designs are shelved for now
 

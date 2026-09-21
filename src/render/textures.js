@@ -809,8 +809,11 @@ function earthFields() {
     //  A belt mask, so ranges appear as chains in some places and plains in others instead of
     //  corrugating the entire planet.
     highland: field(256, 128, (u, v) => fbm(u, v, 3, 2, 3, 151)),
-    //  Cloud, stretched east-west: weather moves along the parallels, so its blobs are wide.
+    //  Cloud, stretched east-west: weather moves along the parallels, so its blobs are wide. The
+    //  fine field rides on top of it to feather the edges - a cloud with a hard edge reads as a
+    //  patch of white paint, and on a marble 40 px across the feathering is the whole difference.
     cloud: field(512, 256, (u, v) => fbm(u, v, 11, 4, 4, 131)),
+    cloudFine: field(1024, 512, (u, v) => fbm(u, v, 22, 11, 3, 137)),
   };
   return _earthFields;
 }
@@ -831,7 +834,7 @@ function earthFields() {
  * field paints the same mountain, whether the map is asked for at 512 or 2048 across.
  */
 export function earthMaps({ width = 1536, height = 768 } = {}) {
-  const { dist, veg, dune, ridge, highland, cloud } = earthFields();
+  const { dist, veg, dune, ridge, highland } = earthFields();
   //  The ocean is lighter than a real one, deliberately. This is a marble 40 px across on dark
   //  timber, and the honest deep blue of the Pacific (about 0.01 of a stop above black) turns the
   //  whole globe into a shadow: the water is *most* of the surface, so its value sets the marble's
@@ -847,22 +850,15 @@ export function earthMaps({ width = 1536, height = 768 } = {}) {
   const ROCK = [0.46, 0.42, 0.36];
   const SNOW = [0.94, 0.95, 0.97];
   const ICE = [0.93, 0.95, 0.98];
-  const CLOUD = [0.97, 0.98, 1.0];
-  //  Two things in this loop are pure trigonometry of one coordinate each, and at two million pixels
-  //  that is where the time goes: the ice edges wobble with longitude and the cloud belt breathes
-  //  with latitude. Both are precomputed - one entry per pixel column, one per row - so the loop
-  //  below is arithmetic and array reads.
+  //  The ice edges wobble with longitude, which at a two-million-pixel map is real trigonometry in
+  //  the hot loop. It is precomputed once per pixel column instead, so the loop below is arithmetic
+  //  and array reads.
   const edgeN = new Float32Array(width);
   const edgeS = new Float32Array(width);
-  const belt = new Float32Array(height);
   for (let x = 0; x < width; x++) {
     const lon = ((x + 0.5) / width) * 360 - 180;
     edgeN[x] = 8 * Math.sin(lon * DEG * 2.3) + 4 * Math.sin(lon * DEG * 5.1);
     edgeS[x] = 6 * Math.sin(lon * DEG * 1.7) + 3 * Math.sin(lon * DEG * 4.3);
-  }
-  for (let y = 0; y < height; y++) {
-    const lat = -90 + ((y + 0.5) / height) * 180;
-    belt[y] = 0.40 + 0.60 * (0.5 + 0.5 * Math.cos(lat * DEG * 3.4));
   }
   //  One more row-shaped shortcut, and the biggest one: of the forty-odd boxed rings, only a handful
   //  can possibly cover any one parallel of latitude, so each row of the map carries its own list.
@@ -937,18 +933,64 @@ export function earthMaps({ width = 1536, height = 768 } = {}) {
       const floor = 0.40 + 0.06 * (1 - ramp(km, 60, 500));
       out[2] = [floor, floor, floor];
     }
-    //  Weather last, over everything. The belts are the parts of the planet that are reliably
-    //  cloudy - the equatorial convergence and the two storm belts - so the cover follows them
-    //  rather than falling evenly, and it stays under half opacity so the ground still reads.
-    const cover = sampleField(cloud, 512, 256, u, v);
-    const alpha = Math.min(0.42, ramp(cover, 0.52, 0.84) * belt[y]);
-    if (alpha > 0.002) mix3(colour, colour, CLOUD, alpha);
   });
   return {
     map: planetTexture(channels[0], width, height, true),
     roughness: planetTexture(channels[1], width, height, false),
     bump: planetTexture(channels[2], width, height, false),
   };
+}
+
+/**
+ * The Earth's weather, as a layer of its own: white cloud in RGB and coverage in the alpha channel.
+ *
+ * Why a separate map rather than cloud painted into the albedo (which is how it started): baked
+ * cloud is welded to the ground. Weather moves, and the honest way to show that on a rolling marble
+ * is a second shell over the same sphere whose *own* rotation runs at its own speed, so the cloud
+ * fields drift across the continents instead of being dragged around with them. That shell is the
+ * only thing this function feeds.
+ *
+ * The alpha is real coverage, so the material is `transparent` and blends rather than cutting. The
+ * ramp is deliberately soft at the top - a hard-edged cloud on a marble 40 px across reads as a
+ * patch of white paint, and the feathering is the whole difference - and the cover follows the
+ * *belts where weather belongs* (the equatorial convergence and the two storm belts) rather than
+ * falling evenly over the globe.
+ */
+export function earthCloudMap({ width = 1024, height = 512 } = {}) {
+  const { cloud, cloudFine } = earthFields();
+  const belt = new Float32Array(height);
+  for (let y = 0; y < height; y++) {
+    const lat = -90 + ((y + 0.5) / height) * 180;
+    belt[y] = 0.40 + 0.60 * (0.5 + 0.5 * Math.cos(lat * DEG * 3.4));
+  }
+  const THIN = [0.70, 0.74, 0.80]; // the grey underside of a thin edge
+  const THICK = [1.0, 1.0, 1.0];
+  const data = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const v = (y + 0.5) / height;
+    for (let x = 0; x < width; x++) {
+      const u = (x + 0.5) / width;
+      const cover = 0.68 * sampleField(cloud, 512, 256, u, v) + 0.32 * sampleField(cloudFine, 1024, 512, u, v);
+      const alpha = Math.min(0.92, ramp(cover, 0.5, 0.82) * belt[y] + ramp(cover, 0.68, 0.92) * 0.25);
+      const thick = ramp(cover, 0.5, 0.85);
+      const i = (y * width + x) * 4;
+      data[i] = Math.round((THIN[0] + (THICK[0] - THIN[0]) * thick) * 255);
+      data[i + 1] = Math.round((THIN[1] + (THICK[1] - THIN[1]) * thick) * 255);
+      data[i + 2] = Math.round((THIN[2] + (THICK[2] - THIN[2]) * thick) * 255);
+      data[i + 3] = Math.round(alpha * 255);
+    }
+  }
+  const tex = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
+  //  sRGB for the cloud colour; the alpha channel is coverage and is never colour-transformed.
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 // --- the Moon ----------------------------------------------------------------------------------

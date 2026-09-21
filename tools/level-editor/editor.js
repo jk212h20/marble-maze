@@ -55,6 +55,8 @@ import {
   removeSpawn,
   MIN_SPAWN_GAP,
 } from './model.js';
+import { METALS, DEFAULT_METAL, metalById } from '../../src/engine/metals.js';
+import { BUTTON_R_MAX } from '../../src/engine/constants.js';
 import { STORE_KEY, SESSION_KEY } from '../../src/engine/drafts.js';
 import { validateDraft, summarise } from './validate.js';
 import { draw, computeLayout, pxToCell, pxToCellSpace, COLORS } from './render.js';
@@ -224,7 +226,7 @@ const OBJECT_LISTS = [
   ['windmills', 'Windmill', 'windmill'],
   ['pendulums', 'Pendulum', 'pendulum'],
   ['magnets', 'Magnet', 'magnet'],
-  ['buttons', 'Plate → gate', 'button'],
+  ['buttons', 'Pressure button', 'button'],
   ['lifts', 'Lift wall', 'lift'],
   ['movers', 'Sliding bar', 'mover'],
   ['teleports', 'Teleport pair', 'teleport'],
@@ -978,6 +980,54 @@ function renderProps() {
     };
     row.append(lab, input);
     root.appendChild(row);
+
+    //  The radius: a button may be authored a little larger or smaller, exactly as a pit may, so
+    //  it can be tuned to the ground it sits on.
+    const radiusRow = document.createElement('div');
+    radiusRow.className = 'prow';
+    const radiusLab = document.createElement('label');
+    radiusLab.textContent = 'radius';
+    const radius = document.createElement('input');
+    radius.type = 'range';
+    radius.min = 0.2;
+    radius.max = BUTTON_R_MAX;
+    radius.step = 0.01;
+    radius.value = o.radius ?? 0.36;
+    const radiusOut = document.createElement('output');
+    radiusOut.textContent = Number(radius.value).toFixed(2);
+    radius.oninput = () => {
+      o.radius = Number(radius.value);
+      radiusOut.textContent = radius.value;
+    };
+    radius.onchange = () => rebuild();
+    radiusRow.append(radiusLab, radius, radiusOut);
+    root.appendChild(radiusRow);
+
+    //  The metal: the finish of this button AND of every lift wall it drives, so the wall you
+    //  raise is cut from the same metal as the button that raises it. Each option carries its own
+    //  swatch, so the choice is a colour, not an id.
+    const metalRow = document.createElement('div');
+    metalRow.className = 'prow';
+    const metalLab = document.createElement('label');
+    metalLab.textContent = 'metal';
+    const metalSel = document.createElement('select');
+    for (const m of METALS) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label;
+      opt.style.color = m.css;
+      metalSel.appendChild(opt);
+    }
+    metalSel.value = metalById(o.metal).id;
+    metalSel.onchange = () => {
+      o.metal = metalSel.value;
+      rebuild();
+    };
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    swatch.style.background = metalById(o.metal).css;
+    metalRow.append(metalLab, metalSel, swatch);
+    root.appendChild(metalRow);
   }
   if (kind === 'lift') {
     const idRow = document.createElement('div');
@@ -1383,7 +1433,7 @@ function placeObjectAt(at) {
     if (!draft.buttons.some(hit)) {
       //  A plate gets an id so a lift can name it. Its gate is optional: a plate that only
       //  drives lifts has no gate at all, and the ledger allows that.
-      draft.buttons.push({ id: nextPlateId(), cell: [...at], gate: draft.gates[0]?.id ?? '', hold: 4 });
+      draft.buttons.push({ id: nextPlateId(), cell: [...at], gate: draft.gates[0]?.id ?? '', hold: 4, metal: DEFAULT_METAL });
     }
   }
 }
@@ -1691,7 +1741,7 @@ function wireCanvas() {
       }
     }
     const k = ev.key.toLowerCase();
-    const byKey = { f: 'floor', w: 'wall', i: 'ice', s: 'sand', t: 'steel', c: 'belt', v: 'vent', p: 'plate' };
+    const byKey = { f: 'floor', w: 'wall', i: 'ice', s: 'sand', t: 'steel', c: 'belt', v: 'vent' };
     if (k === 'o') selectTool({ kind: 'pit' });
     else if (byKey[k]) selectTool({ kind: 'cell', id: byKey[k] });
   });

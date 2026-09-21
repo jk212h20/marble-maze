@@ -35,7 +35,18 @@
 //    `seg` is a segment in cell space (fractions allowed, like a gate); `plate` names a
 //    `buttons` entry by its `id`; `mode: 'raise'` (the default) rests flush and lifts into a
 //    wall while the plate is stood on, `'lower'` rests raised and sinks while it is. `speed`
-//    is how fast the slab travels through its own height, in heights per second.
+//    is how fast the slab travels through its own height, in heights per second. A slab is cut
+//    from the metal of the plate that drives it, and it is a wall: as wide as a wall cell and
+//    as tall as one, driven the full height out of a routed slot.
+//
+//    A pressure PLATE is a raised circular metal BUTTON, authored like a pit rather than painted
+//    into the grid:
+//      buttons: [{ id, cell: [c, r], gate?, hold?, metal?, radius? }]
+//    `cell` is in cell space (an integer is a cell centre, so 3.125 is an eighth past cell 3),
+//    so a button can sit on a fraction of a cell and on ANY ground - ice, sand, steel or a
+//    material plate - without erasing it. `metal` picks the finish of the button and of every
+//    lift it drives (see engine/metals.js); `radius` defaults to BUTTON_R. `gate` is optional:
+//    a plate that only drives lifts has no gate.
 //
 //    materials may also be PLATES: `ice: [{ rect: [c0, r0, c1, r1] }]`, a rectangle in cell-EDGE
 //    coordinates. Whole cells are still `[c0, r0, c1, r1]` rectangles of cells, exactly as before;
@@ -43,8 +54,18 @@
 //    A pit no longer deletes the ground it is cut into: ice stays ice under a pit, and the drawn
 //    plate is cut by the hole's true shape (see materials.js).
 //
-import { PIT_R, GOAL_R, RAMP_HEIGHT, RAMP_MAX_SLOPE, RAMP_STEP_UP, LIFT_SPEED, LIFT_SOLID } from './constants.js';
+import {
+  PIT_R,
+  GOAL_R,
+  RAMP_HEIGHT,
+  RAMP_MAX_SLOPE,
+  RAMP_STEP_UP,
+  LIFT_SPEED,
+  LIFT_SOLID,
+  BUTTON_R,
+} from './constants.js';
 import { makeRegion } from './materials.js';
+import { DEFAULT_METAL } from './metals.js';
 
 //  Everything is verified by tests/levels.test.js (silhouette sanity, spawn/goal present,
 //  no sealed-off region, no 1-cell-wide choke on a corridor) and tests/solver.test.js
@@ -465,7 +486,22 @@ export function buildLevel(spec) {
     put(t.a, PAD);
     put(t.b, PAD);
   }
-  for (const b of spec.buttons ?? []) put(b.cell, PLATE);
+  //  A pressure PLATE is a circular BUTTON: an obstacle like a pit, not a painted cell. It is
+  //  authored in cell space, may sit on a fraction of a cell, and sits ON whatever ground is
+  //  there instead of replacing it. So it never touches the grid - a button on ice is a button on
+  //  ice, and a level that paints the cell PLATE keeps that paint (the paint is only the flat
+  //  inlay; the raised button is built from this list). Validated like a pit: it must land on the
+  //  board, inside the silhouette, and not in a wall.
+  for (const b of spec.buttons ?? []) {
+    const [bc, br] = Array.isArray(b.cell) ? b.cell : [];
+    if (!Number.isFinite(bc) || !Number.isFinite(br)) {
+      throw new Error(`${spec.id}: plate ${b.id ?? ''} has a non-finite cell`);
+    }
+    const [c, r] = cover(bc, br);
+    if (!grid[r] || grid[r][c] === undefined) throw new Error(`${spec.id}: plate cell ${b.cell} is off-board`);
+    if (grid[r][c] === OUTSIDE) throw new Error(`${spec.id}: plate cell ${b.cell} is outside the silhouette`);
+    if (grid[r][c] === WALL) throw new Error(`${spec.id}: plate cell ${b.cell} sits in a wall`);
+  }
   //  `spawn` is usually a single cell `[c, r]`, but a MULTI-MARBLE level authors a list
   //  `[[c0, r0], [c1, r1], ...]` — every marble must reach the goal to win. Both shapes are
   //  accepted here so a level reads the same to the engine whichever way it was authored.
@@ -574,7 +610,17 @@ export function buildLevel(spec) {
       }),
       plates: (spec.buttons ?? []).map((b) => {
         const [x, z] = toWorld(b.cell[0], b.cell[1]);
-        return { ...b, x, z };
+        return {
+          ...b,
+          x,
+          z,
+          // `cell` is the integer grid cell the button sits on (what a validator indexes); `at`
+          // keeps the exact authored position, fractions included.
+          cell: cover(b.cell[0], b.cell[1]),
+          at: [...b.cell],
+          metal: b.metal ?? DEFAULT_METAL,
+          radius: Number.isFinite(b.radius) ? b.radius : BUTTON_R,
+        };
       }),
       gates: (spec.gates ?? []).map((g) => ({
         ...g,
@@ -588,6 +634,9 @@ export function buildLevel(spec) {
       //  live 0..1 position the physics and the renderer both read.
       lifts: (spec.lifts ?? []).map((l, i) => {
         const raise = l.mode !== 'lower';
+        //  A lift is cut from the metal of the plate it reads, so the wall you raise looks like
+        //  the button that raises it. A level that names no metal gets brass, as it always did.
+        const plate = (spec.buttons ?? []).find((b) => b.id && b.id === l.plate);
         return {
           ...l,
           i,
@@ -595,7 +644,11 @@ export function buildLevel(spec) {
           raise,
           height: raise ? 0 : 1,
           solid: (raise ? 0 : 1) >= LIFT_SOLID,
+          //  Which way the slab is travelling this tick; the physics sets it, the collider reads
+          //  it so a slab on its way up can shove a marble off, and one on its way down cannot.
+          rising: false,
           speed: l.speed ?? LIFT_SPEED,
+          metal: plate?.metal ?? DEFAULT_METAL,
           segments: [gateSegment(l.seg, w, h)],
         };
       }),

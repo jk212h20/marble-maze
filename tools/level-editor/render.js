@@ -20,6 +20,16 @@ import {
   OUTSIDE,
 } from '../../src/engine/levels.js';
 import { combineHoleRings } from '../../src/engine/hole-ring.js';
+import { metalById } from '../../src/engine/metals.js';
+
+/** A darker edge for a metal swatch, so a plan-view button reads as a raised disc. */
+function shade(hex, f = 0.5) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 255) * f);
+  const g = Math.round(((n >> 8) & 255) * f);
+  const b = Math.round((n & 255) * f);
+  return `rgb(${r}, ${g}, ${b})`;
+}
 
 export const COLORS = {
   [FLOOR]: '#d8b98b',
@@ -429,14 +439,16 @@ export function draw(
       ctx.fillText(g.id, Math.min(ax, bx), Math.min(ay, by) - 3);
     }
   }
-  //  Lifts: a bar like a gate, but coloured by what the plate does to it (a lowering wall rests
-  //  up and sinks, a raising wall rests flush and stands up), with a dashed link to its plate so
-  //  the pairing is visible at a glance.
+  //  Lifts: a wall slab along its own segment, drawn in the metal of the plate that drives it,
+  //  with a thin core line in the plate's colour cueing what the press does to it (a lowering wall
+  //  rests up and sinks, a raising wall rests flush and stands up), plus a dashed link to its
+  //  plate so the pairing is visible at a glance.
   for (const l of level.features.lifts ?? []) {
     const seg = l.segments[0];
     const [ax, ay] = boardToPx(layout, level, seg.a[0], seg.a[1]);
     const [bx, by] = boardToPx(layout, level, seg.b[0], seg.b[1]);
-    const colour = l.mode === 'raise' ? '#d08327' : '#8a2f8f';
+    const metal = metalById(l.metal).css;
+    const cue = l.mode === 'raise' ? '#d08327' : '#8a2f8f';
     const plate = level.features.plates.find((p) => p.id && p.id === l.plate);
     if (plate) {
       const [px, py] = boardToPx(layout, level, plate.x, plate.z);
@@ -450,12 +462,23 @@ export function draw(
       ctx.stroke();
       ctx.restore();
     }
-    ctx.strokeStyle = colour;
-    ctx.lineWidth = Math.max(4, cell * 0.2);
+    ctx.strokeStyle = metal;
+    ctx.lineWidth = Math.max(5, cell * 0.24);
     ctx.beginPath();
     ctx.moveTo(ax, ay);
     ctx.lineTo(bx, by);
     ctx.stroke();
+    //  The mode cue is a *dashed* core line, not a solid one: a solid line down the middle of a
+    //  thin band reads as a coloured bar and hides the metal the wall is actually made of.
+    ctx.save();
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = cue;
+    ctx.lineWidth = Math.max(1.5, cell * 0.055);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+    ctx.restore();
   }
 
   for (const o of level.features.oneways) {
@@ -475,7 +498,8 @@ export function draw(
   }
   for (const p of level.features.plates) {
     const [x, y] = boardToPx(layout, level, p.x, p.z);
-    circle(x, y, cell * 0.3, '#e7c152', '#8a6a10');
+    const metal = metalById(p.metal).css;
+    circle(x, y, cell * (p.radius ?? 0.36), metal, shade(metal));
   }
 
   // Marbles and the goal. A multi-marble level draws one green disc per spawn, numbered so the

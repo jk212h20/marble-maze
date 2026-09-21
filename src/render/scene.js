@@ -19,7 +19,10 @@ import {
   BALL_R,
   BALL_R_MAX,
   BUTTON_R,
+  BUTTON_TRAVEL,
   TELEPORT_R,
+  LIFT_HALF_W,
+  LIFT_H,
   MAX_TILT,
   LID_Y,
   LID_THICK,
@@ -42,6 +45,7 @@ import {
   PANEL_GUTTER,
 } from '../engine/constants.js';
 import { WALL, PIT, ICE, SAND, STEEL, BELT, VENT, PAD, PLATE, GOAL as GOAL_CHAR, toEdgeSpace } from '../engine/levels.js';
+import { METALS, metalById } from '../engine/metals.js';
 import { silhouetteLoops, slabHoles, insetLoop, insideFootprint, loopArea } from '../engine/silhouette.js';
 import { holeOutline, holeShape, holeRing, holeRingPair, combineHoleRings, holeClusters, offsetRing } from './hole-shape.js';
 import { regionGeometry } from '../engine/materials.js';
@@ -608,6 +612,36 @@ export function createScene(canvas, level, { wood = null, marbleLook = DEFAULT_M
   // The grip's ribs should land every few millimetres on the ring rather than once per
   // texture tile, so tile the band around its circumference.
   assets.grip.map.repeat.set(7, 1);
+
+  //  One material per metal, built from the shared METALS table so the editor's swatches and the
+  //  board's buttons and lift walls can never name two different colours for "brass". `metalMat`
+  //  resolves through metalById, so a level that names an unknown metal still renders as brass.
+  const metalAssets = Object.fromEntries(
+    METALS.map((m) => [
+      m.id,
+      new THREE.MeshStandardMaterial({
+        color: m.color,
+        roughness: m.roughness,
+        metalness: m.metalness,
+        envMapIntensity: m.envMapIntensity ?? 1.25,
+      }),
+    ]),
+  );
+  //  The same metal with a brighter top face, so a button cap or a raised wall reads with a lit
+  //  top edge instead of as one flat metal tone from a near-overhead camera.
+  const metalTopAssets = Object.fromEntries(
+    METALS.map((m) => [
+      m.id,
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color(m.color).offsetHSL(0, -0.02, 0.12),
+        roughness: Math.max(0.12, m.roughness - 0.08),
+        metalness: m.metalness,
+        envMapIntensity: (m.envMapIntensity ?? 1.25) * 1.2,
+      }),
+    ]),
+  );
+  const metalMat = (id) => metalAssets[metalById(id).id];
+  const metalTopMat = (id) => metalTopAssets[metalById(id).id];
 
   const boardGroup = new THREE.Group();
   scene.add(boardGroup);
@@ -1521,18 +1555,37 @@ export function createScene(canvas, level, { wood = null, marbleLook = DEFAULT_M
     }
 
     for (const plate of f.plates) {
+      const r = plate.radius ?? BUTTON_R;
       const g = new THREE.Group();
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(BUTTON_R, BUTTON_R, 0.06, 26), assets.plate);
-      disc.position.y = 0.03;
-      disc.castShadow = true;
-      g.add(disc);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(BUTTON_R + 0.05, 0.03, 10, 26), assets.brass);
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.06;
-      g.add(ring);
+      //  A pressure plate is a raised circular BUTTON: a dark routed seat, a short metal body
+      //  standing proud of the floor, and a brighter chamfered cap the marble rolls onto. The
+      //  cap sinks a little when the button is held, and a soft ring flashes around the seat so
+      //  a held plate reads even when the cap is under the marble.
+      const seat = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.05, r + 0.05, 0.05, 32), assets.dark);
+      seat.position.y = 0.025;
+      seat.receiveShadow = true;
+      g.add(seat);
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.02, 0.1, 32), metalMat(plate.metal));
+      body.position.y = 0.1;
+      body.castShadow = true;
+      body.receiveShadow = true;
+      g.add(body);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.82, r * 0.92, 0.055, 32), metalTopMat(plate.metal));
+      cap.castShadow = true;
+      const capY = 0.175;
+      cap.position.y = capY;
+      g.add(cap);
+      const halo = new THREE.Mesh(new THREE.RingGeometry(r + 0.005, r + 0.05, 32), assets.glow.clone());
+      halo.rotation.x = -Math.PI / 2;
+      halo.position.y = 0.052;
+      halo.material.opacity = 0;
+      //  This material is this button's own (its opacity animates as it is held), so a level
+      //  change must dispose it - `assets.glow` itself is shared and must NOT be.
+      halo.material.userData.owned = true;
+      g.add(halo);
       g.position.set(plate.x, 0, plate.z);
       root.add(g);
-      plates.push({ mesh: g, disc, def: plate });
+      plates.push({ mesh: g, cap, body, halo, def: plate, capY });
     }
 
     for (const pad of f.pads) {
@@ -1568,6 +1621,11 @@ export function createScene(canvas, level, { wood = null, marbleLook = DEFAULT_M
       const b = new THREE.Vector3(seg.b[0], 0, seg.b[1]);
       const len = a.distanceTo(b);
       const mid = a.clone().add(b).multiplyScalar(0.5);
+      //  The bar is AS LONG AS ITS OWN SEGMENT and runs ALONG it: the collider is the segment
+      //  itself, so a bar laid across the segment would draw a barrier the marble ignores and
+      //  hide one it cannot pass. `rotation.y` maps the box's local +X onto a->b; `lookAt` would
+      //  map its +Z there instead and leave the long axis a quarter turn out.
+      const along = Math.atan2(-(b.z - a.z), b.x - a.x);
       const bar = new THREE.Mesh(new THREE.BoxGeometry(len, 0.42, 0.16), assets.iron);
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(len, 0.1, 0.18), assets.hazard);
       stripe.position.y = 0.12;
@@ -1575,7 +1633,7 @@ export function createScene(canvas, level, { wood = null, marbleLook = DEFAULT_M
       bar.castShadow = true;
       bar.position.copy(mid);
       bar.position.y = 0.21;
-      bar.lookAt(b.x, 0.21, b.z);
+      bar.rotation.y = along;
       const g = new THREE.Group();
       g.add(bar);
       root.add(g);
@@ -1586,21 +1644,41 @@ export function createScene(canvas, level, { wood = null, marbleLook = DEFAULT_M
       const seg = l.segments[0];
       const a = new THREE.Vector3(seg.a[0], 0, seg.a[1]);
       const b = new THREE.Vector3(seg.b[0], 0, seg.b[1]);
-      const len = a.distanceTo(b);
+      const len = a.distanceTo(b) || 1;
       const mid = a.clone().add(b).multiplyScalar(0.5);
-      const slab = new THREE.Mesh(new THREE.BoxGeometry(len, 0.42, 0.18), assets.iron);
-      slab.castShadow = true;
-      // A brass cap so a wall you can drive up and down reads as a *mechanism*, not a wall.
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(len * 1.02, 0.09, 0.24), assets.brass);
-      cap.position.y = 0.185;
-      slab.add(cap);
-      slab.position.copy(mid);
-      slab.position.y = 0;
-      slab.lookAt(b.x, 0, b.z);
+      //  `rotation.y` maps the slab's local +X onto a->b, so its length runs ALONG its own
+      //  segment - the collider's line - and its width sits across it. (A `lookAt` maps +Z onto
+      //  the segment and leaves the long axis a quarter turn out: the wall the marble hit and the
+      //  wall on screen would be at right angles.)
+      const along = Math.atan2(-(b.z - a.z), b.x - a.x);
       const g = new THREE.Group();
+      //  The routed slot it rises out of: a dark kerf in the floor along the same line, so the
+      //  wall visibly emerges from the board instead of fading up out of nowhere.
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(len, 0.02, LIFT_HALF_W * 2 + 0.07), assets.dark);
+      slot.position.set(mid.x, 0.009, mid.z);
+      slot.rotation.y = along;
+      slot.receiveShadow = true;
+      g.add(slot);
+      //  A wall, cut from the metal of the plate that drives it: as long as the segment, as wide
+      //  as a wall cell, as tall as a wall.
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(len, LIFT_H, LIFT_HALF_W * 2), metalMat(l.metal));
+      slab.castShadow = true;
+      slab.receiveShadow = true;
+      // A brighter cap, so a wall you can drive up and down reads as a *mechanism*, not a wall.
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(len * 1.004, 0.07, LIFT_HALF_W * 2 * 1.004), metalTopMat(l.metal));
+      cap.position.y = LIFT_H / 2 - 0.035;
+      slab.add(cap);
+      //  upY: standing, its base on the floor. downY: fully retracted, its top just under the
+      //  floor, so at rest it is hidden inside the board and rising carries it the whole way out.
+      //  The slab starts AT its rest height, so a `lower` door does not visibly pop up and a
+      //  `raise` wall does not visibly sink on the frame the level loads.
+      const upY = LIFT_H / 2;
+      const downY = -LIFT_H / 2 - 0.006;
+      slab.position.set(mid.x, downY + (upY - downY) * (l.height ?? 0), mid.z);
+      slab.rotation.y = along;
       g.add(slab);
       root.add(g);
-      lifts.push({ mesh: g, slab, def: l, upY: 0, downY: -0.62 });
+      lifts.push({ mesh: g, slab, def: l, upY, downY });
     }
 
     return { root, pegs, windmills, pendulums, movers, plates, pads, magnets, gates, lifts };
@@ -2244,6 +2322,9 @@ export function createScene(canvas, level, { wood = null, marbleLook = DEFAULT_M
       boardGroup.remove(levelRoot);
       levelRoot.traverse((o) => {
         if (o.geometry && o.geometry !== undefined) o.geometry.dispose?.();
+        //  Only materials a level built for itself (a button's own halo) are disposed; the shared
+        //  `assets.*` materials are reused by the next level and must survive the switch.
+        if (o.material?.userData?.owned) o.material.dispose?.();
       });
     }
     level = nextLevel;
@@ -2464,11 +2545,17 @@ export function createScene(canvas, level, { wood = null, marbleLook = DEFAULT_M
       if (!def) continue;
       const st = def.gate ? world.gates.find((g) => g.id === def.gate) : null;
       const open = !!def.pressed || !!st?.open;
-      obstacles.plates[i].disc.material = open ? assets.pad : assets.plate;
-      obstacles.plates[i].mesh.position.y = open ? -0.03 : 0;
+      const plate = obstacles.plates[i];
+      //  The cap sinks a hair under the marble, and a soft ring lights around the seat, so a held
+      //  button reads even when the marble standing on it hides the cap itself.
+      const capWant = open ? plate.capY - BUTTON_TRAVEL : plate.capY;
+      plate.cap.position.y += (capWant - plate.cap.position.y) * Math.min(1, dt * 30);
+      const haloWant = open ? 0.5 : 0;
+      plate.halo.material.opacity += (haloWant - plate.halo.material.opacity) * Math.min(1, dt * 18);
     }
     //  Lifts: the slab's height is the engine's own, so the wall is exactly where the marble
-    //  collides with it, and you can watch it come up or go down.
+    //  collides with it, and you can watch it climb out of its slot or sink back into the floor.
+    //  Fully retracted it sits just under the board, so at rest there is nothing but the kerf.
     for (let i = 0; i < obstacles.lifts.length; i++) {
       const def = live.lifts?.[i];
       if (!def) continue;

@@ -66,20 +66,29 @@ A level is a small declarative object against a grid of unit cells (see
   movers: [{ from, to, len, speed, phase }], pegs: [{ cell, r, kick }],
   ramps:  [{ rect, dir, height }],     // a wedge; `dir` is the UPHILL traverse, rect in cell EDGES
   magnets: [{ cell, radius, strength }],        // negative strength repels
-  teleports: [{ a, b }],  buttons: [{ id, cell, gate, hold }],  gates: [{ id, seg }],
+  teleports: [{ a, b }],  buttons: [{ id, cell, gate, hold, metal, radius }],  gates: [{ id, seg }],
   lifts: [{ id, seg, plate, mode: 'raise' | 'lower', speed }],
   oneways: [{ seg, normal }],
 }
 ```
 
-A **plate** may carry an `id` so a lift can name it, and its `gate` is optional: a plate with no
-`gate` is complete on its own and simply drives lifts.
+A **button** (a pressure plate) is an OBJECT like a pit, not a painted cell: `cell` is in cell
+space, so it may sit on a fraction of a cell, and it sits *on* whatever ground is there without
+replacing it — a button on ice is still ice, and the marble feels the ice right up to the
+button's edge. It may carry an `id` so a lift can name it; its `gate` is optional: a button with
+no `gate` is complete on its own and simply drives lifts. `metal` (default `brass`) and `radius`
+(default `BUTTON_R`) are its finish and its size; see `src/engine/metals.js`.
 
-A **lift** is a wall slab a plate raises or lowers *while the plate is held*. Unlike a gate it has
-no timer: `mode: 'lower'` rests raised and sinks under a marble on its plate, `mode: 'raise'`
-rests flush and stands up while the plate is held. `speed` is how fast it travels its own height
-(heights per second; default 6). The slab is solid once it is more than half up, and a raising
-slab is a moving collider, so it can never post a marble inside a wall band.
+A **lift** is a metal wall slab a button raises or lowers *while the button is held*, and it is
+cut from that button's own metal. Unlike a gate it has no timer: `mode: 'lower'` rests raised and
+sinks under a marble on its button, `mode: 'raise'` rests flush and stands up while the button is
+held. `speed` is how fast it travels its own height (heights per second; default 6). The slab is
+no mathematical line: it is as long as its own `seg`, as wide as a wall cell and as tall as a
+wall, it runs *along* `seg` (the line the marble collides with), and it is solid once it is more
+than half up. It is a moving collider, so it can never post a marble inside a wall band; a slab
+still on its way *up* pushes a marble sitting on it off toward whichever side of the slab the
+marble is more on, while one on its way *down* does not push — it sinks out from under whatever
+is riding it.
 
 The builder turns that into a grid, wall collision segments, feature lists, a board
 silhouette and world-space positions. It **fails closed**: an off-board rect, a surface
@@ -116,9 +125,9 @@ level that half works.
 | Conveyor belt | Drags the marble toward its surface speed | Animated ribbed belt |
 | Fan / vent | Steady in-plane push | Grille plate; later: a visible airstream |
 | Magnet | Attracts or repels inside its radius | Brass (attract) or iron (repel) disc |
-| Pressure plate | Opens its gate for `hold` seconds, and drives any lift that names it | Gold disc, glows when pressed |
-| Lift, `lower` | A wall slab that rests raised and sinks while its plate is held | Iron bar with a brass cap, sliding down into its slot |
-| Lift, `raise` | A wall slab that rests flush and stands up while its plate is held | The same, sliding up: a bar you can see come |
+| Pressure button | Opens its gate for `hold` seconds, and drives any lift that names it | Raised circular metal button — a dark seat, a metal body and a brighter cap that sinks and lights a ring when held. Placeable on any ground, like a pit |
+| Lift, `lower` | A wall slab that rests raised and sinks while its button is held | A metal wall slab, cut from its button's metal, sliding down into a routed slot |
+| Lift, `raise` | A wall slab that rests flush and stands up while its button is held | The same, climbing out of its slot: a wall you can see come |
 | One-way flap | Blocks from one side only | — (level 7) |
 | Teleport pads | Move the marble to the twin pad, keeping its speed | Cyan disc that re-arms when cleared |
 
@@ -192,8 +201,9 @@ something you ride back down.
    fall returns just the one that fell, and two marbles collide rather than pass through each
    other. Par 26 s. It is the level that proves the multi-marble path end to end.
 
-4. **Both Locks** — rectangle, 15×11. **Two marbles**, one plate, and **two lift slabs driven
-   by it in opposite directions**: standing on the plate sinks the neighbour's door and raises
+4. **Both Locks** — rectangle, 15×11. **Two marbles**, one raised metal pressure button, and
+   **two metal lift walls driven by it in opposite directions** (both cut from the button's own
+   brass): standing on the button sinks the neighbour's door and raises
    the holder's own, so a marble can open the way for its fellow only while barring itself. One
    holds the door, the other goes, and the holder goes last. A `coop` level: it is the one level
    the single-marble autopilot cannot play, and it is checked by a scripted two-marble plan

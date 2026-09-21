@@ -21,7 +21,7 @@
 //  original ball, so the size slider moves the picture and the physics together.
 
 import * as THREE from 'three';
-import { marbleTexture, earthMaps, moonMaps, eightBallMap } from './textures.js';
+import { marbleTexture, earthMaps, earthCloudMap, moonMaps, eightBallMap } from './textures.js';
 import { parsePathData, shapesFromSubpaths, dropEnclosingDisc } from './svg-path.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -283,7 +283,7 @@ function buildEarth(group) {
   //  with relief on it instead of a flat decal. `bumpScale` is in the marble's own units, where the
   //  radius is 1.
   const { map, roughness, bump } = earthMaps();
-  return paintedShell(group, {
+  const surface = paintedShell(group, {
     map,
     roughnessMap: track(group, roughness),
     bumpMap: track(group, bump),
@@ -295,6 +295,56 @@ function buildEarth(group) {
     envMapIntensity: 1.05,
     emissive: 0.16,
   });
+
+  //  The weather, as its own shell.
+  //
+  //  It is the *same sphere at the same radius* as the surface - the marble's size, its silhouette
+  //  and everything the engine simulates are untouched, and it is a separate mesh only so it can
+  //  turn at its own speed. Two coincident spheres would normally z-fight, so the cloud material is
+  //  pulled a hair toward the camera in the depth test (`polygonOffset`), which is what that knob is
+  //  for; it is a screen-space nudge in the depth buffer, not a change to any geometry. It writes no
+  //  depth of its own, so the surface underneath stays the thing that defines the ball.
+  //
+  //  It casts no shadow. A transparent sphere still casts a full sphere's shadow unless it is told
+  //  not to (shadow maps do not read alpha), and a second shadow would double-darken the board. The
+  //  surface shell already casts the marble's one shadow.
+  const cloudTex = track(group, earthCloudMap());
+  const clouds = track(
+    group,
+    new THREE.Mesh(
+      shellGeometry(),
+      new THREE.MeshPhysicalMaterial({
+        map: cloudTex,
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+        roughness: 0.95,
+        metalness: 0,
+        clearcoat: 0.1,
+        clearcoatRoughness: 0.6,
+        envMapIntensity: 0.5,
+        emissive: 0xffffff,
+        emissiveMap: cloudTex,
+        emissiveIntensity: 0.08,
+      }),
+    ),
+  );
+  clouds.name = 'marble-clouds';
+  clouds.castShadow = false;
+  clouds.receiveShadow = false;
+  clouds.renderOrder = 2; // after the surface, whatever else is transparent on the board
+
+  //  The drift: a slow turn about the marble's own axis, which the cloud shell does *in addition to*
+  //  the roll the physics gives the group it rides in. A full turn takes about a minute at 0.1 of a
+  //  radian a second - fast enough to read as moving weather while you watch it, slow enough that it
+  //  never looks like the marble is spinning wrong.
+  const tick = (t) => {
+    clouds.rotation.y = t * 0.1;
+  };
+
+  return { ...surface, layers: [clouds], tick };
 }
 
 function buildMoon(group) {
@@ -1034,6 +1084,11 @@ export function buildMarble(id) {
     bands = null,
     tint = null,
     bandShell = null,
+    //  Further shells over the same sphere, outermost last: the Earth's weather is the only one so
+    //  far. They are *presentation only* - the marble's radius, its scale and everything the engine
+    //  simulates come from the same numbers they always came from, and a layer cannot move them.
+    layers = [],
+    tick = null,
   } = design.build(group) ?? {};
   if (core) group.add(core);
   //  A design may put a layer *inside* the glass (the lantern's light-blocking bands), and it has to
@@ -1044,6 +1099,7 @@ export function buildMarble(id) {
   shell.name = 'marble-ball';
   shell.castShadow = true;
   shell.receiveShadow = true;
+  for (const layer of layers) group.add(layer);
   //  Remember what this design shipped as, so the tuning sheet's transparency and bend can scale it
   //  rather than overwrite it. Only materials that are actually glass get the record: the painted
   //  cat's-eye has no transmission, and the dials must leave it alone instead of turning it to glass.
@@ -1080,6 +1136,10 @@ export function buildMarble(id) {
   //  *delegate*: the scene hands over dials and never needs to know how a marble is built.
   if (bands) group.userData.bands = bands;
   if (tint) group.userData.tint = tint;
+
+  //  A builder may bring its own per-frame motion, which is how the Earth's weather drifts
+  //  independently of the ground it drifts over. The id-specific cases below can still override it.
+  if (tick) group.userData.tick = tick;
 
   if (design.id === 'bitcoin' && symbol) {
     //  The one design that must stay LEGIBLE.

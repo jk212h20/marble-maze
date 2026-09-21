@@ -323,6 +323,58 @@ export function tests(t) {
     if (checked.length < 2) throw new Error(`only checked ${checked.join(', ')}, which is too few to mean anything`);
   });
 
+  t.ok("the Earth's weather is its own layer, and it drifts on its own", () => {
+    // Nick, 2026-09-20: "make the clouds a separate layer that moves independently of the earth
+    // layer... I don't want the overall radius or any possibility of any physics change, cosmetic
+    // only." So there are five things to hold it to:
+    //
+    //   * there is a second shell, and it is not the ball - `marble-ball` has to stay the surface the
+    //     size slider and the smoke checks find, or the marble's size would be read off the weather;
+    //   * it is exactly the same sphere at the same radius, so nothing about the marble got bigger;
+    //   * it blends and writes no depth, because it is a layer of weather *over* a surface;
+    //   * it casts no shadow, because a shadow map does not read alpha and a second sphere's shadow
+    //     would darken the board twice;
+    //   * and its tick turns the weather without turning the ground under it.
+    const marble = buildMarble('earth');
+    const clouds = marble.getObjectByName('marble-clouds');
+    if (!clouds) throw new Error('the Earth has no cloud layer');
+    if (clouds === marble.userData.shell) throw new Error('the cloud layer is the marble ball itself');
+    if (marble.userData.shell.name !== 'marble-ball') throw new Error('the surface is no longer named marble-ball');
+    if (!clouds.material.transparent) throw new Error('the cloud layer does not blend, so it would be a solid ball');
+    if (clouds.material.depthWrite) throw new Error('the cloud layer writes depth, so it would hide the surface');
+    if (clouds.castShadow) throw new Error('the cloud layer casts a second shadow');
+
+    const radiusOf = (mesh) => {
+      mesh.geometry.computeBoundingSphere();
+      return mesh.geometry.boundingSphere.radius;
+    };
+    if (Math.abs(radiusOf(clouds) - radiusOf(marble.userData.shell)) > 1e-6) {
+      throw new Error(`the clouds are not the same sphere as the surface (${radiusOf(clouds)} vs ${radiusOf(marble.userData.shell)})`);
+    }
+
+    // The coverage has to be a distribution, not a wash: some sky is clear and some cloud is thick.
+    const data = clouds.material.map.image.data;
+    let clear = 0;
+    let solid = 0;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 20) clear++;
+      else if (data[i] > 180) solid++;
+    }
+    if (!clear || !solid) throw new Error(`the cloud coverage is not a distribution: ${clear} clear, ${solid} solid`);
+
+    // The drift moves the weather and nothing else.
+    const shell = marble.userData.shell;
+    const before = { cloud: clouds.rotation.y, x: shell.rotation.x, y: shell.rotation.y, z: shell.rotation.z };
+    if (typeof marble.userData.tick !== 'function') throw new Error('the Earth has no tick, so nothing drifts');
+    marble.userData.tick(1, marble);
+    marble.userData.tick(2, marble);
+    if (clouds.rotation.y === before.cloud) throw new Error('the cloud layer does not move');
+    if (shell.rotation.x !== before.x || shell.rotation.y !== before.y || shell.rotation.z !== before.z) {
+      throw new Error('the drift moved the surface as well as the clouds');
+    }
+    marble.userData.dispose();
+  });
+
   // --- solid: the opaque marble -----------------------------------------------------------------
 
   t.ok('the solid marble transmits nothing, so it never pays for the glass pass', () => {

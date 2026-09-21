@@ -69,7 +69,6 @@ export const PAINT_CELLS = [
   { char: STEEL, id: 'steel', label: 'Steel', hint: 'Fast, low-friction plate' },
   { char: BELT, id: 'belt', label: 'Conveyor', hint: 'Drags the marble along its direction' },
   { char: VENT, id: 'vent', label: 'Fan / vent', hint: 'Steady push along its direction' },
-  { char: PLATE, id: 'plate', label: 'Pressure plate', hint: 'Opens its gate while held' },
 ];
 
 export const PAINT_BY_ID = Object.fromEntries(PAINT_CELLS.map((p) => [p.id, p.char]));
@@ -106,7 +105,7 @@ export const OBJECT_CELLS = [
   { id: 'windmill', label: 'Windmill', glyph: '✳', hint: 'Rotating arms that bat the marble' },
   { id: 'pendulum', label: 'Pendulum', glyph: '◍', hint: 'Swings across a lane' },
   { id: 'magnet', label: 'Magnet', glyph: '◎', hint: 'Attracts (or repels) inside its radius' },
-  { id: 'button', label: 'Plate → gate', glyph: '▣', hint: 'A plate that opens a named gate' },
+  { id: 'button', label: 'Pressure button', glyph: '▣', hint: 'A raised metal button. Place it on any ground — ice, sand, steel or plain floor: it sits on the ground rather than replacing it, like a pit. It can open a named gate and/or drive lift walls, and it takes a metal finish its walls share.' },
   { id: 'erase', label: 'Erase object', glyph: '␡', hint: 'Remove whatever object sits on the cell' },
 ];
 

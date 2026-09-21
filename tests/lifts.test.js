@@ -8,7 +8,7 @@
 // is completable by a two-marble plan and not by a greedy one.
 import { LEVELS, buildLevel } from '../src/engine/levels.js';
 import { makeWorld, step, allHome } from '../src/engine/physics.js';
-import { DT, LIFT_SOLID } from '../src/engine/constants.js';
+import { DT, LIFT_SOLID, LIFT_HALF_W } from '../src/engine/constants.js';
 
 export const name = 'lifts';
 
@@ -120,6 +120,63 @@ export function tests(t) {
     place(w, p.x, p.z);
     run(w, 0.4);
     if (w.features.lifts[0].solid) throw new Error('the wall did not read the gate-less plate');
+  });
+
+  t.ok('a lift is cut from the metal of the plate that drives it, and defaults to brass', () => {
+    const steel = buildLevel({
+      id: 'fixture',
+      name: 'Fixture',
+      shape: 'Rectangle',
+      difficulty: 1,
+      par: 30,
+      hint: 'test',
+      board: { shape: 'rect', w: 12, h: 9 },
+      walls: [
+        [5, 1, 5, 3],
+        [5, 5, 5, 7],
+      ],
+      spawn: [1, 4],
+      goal: [10, 4],
+      buttons: [{ id: 'p1', cell: [2, 4], metal: 'gunmetal' }],
+      lifts: [{ id: 'w1', seg: [[5, 3], [5, 5]], plate: 'p1', mode: 'raise' }],
+    });
+    if (steel.features.plates[0].metal !== 'gunmetal') throw new Error('the plate metal was not kept');
+    if (steel.features.lifts[0].metal !== 'gunmetal') throw new Error('the wall did not take its plate\u2019s metal');
+    // A level authored before metals existed names none, and stays brass.
+    if (fixture('raise').features.lifts[0].metal !== 'brass') throw new Error('a silent lift is not brass');
+  });
+
+  t.ok('a rising wall pushes a marble off toward whichever side it is more on', () => {
+    const lv = fixture('raise');
+    const w = makeWorld(lv);
+    const seg = w.features.lifts[0].segments[0];
+    const line = seg.a[0]; // a raise-mode slab rests flush, so its collision line is what grows
+    const midZ = (seg.a[1] + seg.b[1]) / 2;
+    const plate = w.features.plates[0];
+    const shove = (offset) => {
+      for (const l of w.features.lifts) {
+        l.height = 0;
+        l.solid = false;
+        l.rising = false;
+      }
+      const b = w.ball;
+      b.x = line + offset;
+      b.z = midZ;
+      b.vx = 0;
+      b.vz = 0;
+      b.y = 0;
+      for (let i = 0; i < Math.round(0.6 / DT); i++) {
+        plate.pressed = true; // hold the plate for this standing marble
+        w.control.x = 0;
+        w.control.z = 0;
+        step(w, DT);
+      }
+      return b.x - line;
+    };
+    const right = shove(0.2);
+    if (right < LIFT_HALF_W * 0.8) throw new Error(`a marble on the +x side was not pushed that way (${right.toFixed(3)})`);
+    const left = shove(-0.2);
+    if (left > -LIFT_HALF_W * 0.8) throw new Error(`a marble on the -x side was not pushed that way (${left.toFixed(3)})`);
   });
 
   const bothLocks = () => buildLevel(LEVELS.find((l) => l.id === 'both-locks'));

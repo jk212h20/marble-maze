@@ -279,6 +279,10 @@ export const MAGNET_STRENGTH = 3.0; // signed; negative repels
 export const TELEPORT_R = 0.34;
 export const TELEPORT_COOLDOWN = 0.45;
 export const BUTTON_R = 0.36;
+export const BUTTON_R_MAX = 0.48; // the level editor's upper bound for an authored button radius
+//  How far a pressed button's cap sinks below its resting height (board units). Small on purpose:
+//  the cap is already raised, and the travel only has to read as "held", not as a switch throw.
+export const BUTTON_TRAVEL = 0.035;
 export const GATE_OPEN_TIME = 4.0; // seconds a button keeps its gate retracted
 
 //  A LIFT is a wall slab that a pressure plate raises out of the floor or sinks back into it,
@@ -289,3 +293,10 @@ export const GATE_OPEN_TIME = 4.0; // seconds a button keeps its gate retracted
 //  less than half raised is a ridge the marble rolls over, more than half is a wall.
 export const LIFT_SPEED = 6.0; // height fractions per second (a quarter second, floor to full)
 export const LIFT_SOLID = 0.5; // the fraction of full height at which a lift becomes a wall
+//  A lift is a WALL, not a mathematical line: its slab is as wide as a wall cell and as tall as
+//  a wall, and it is driven the full height out of a routed slot. `LIFT_HALF_W` is half the
+//  slab's width, so the physics collider is exactly the slab you can see - a marble stopped by a
+//  raised lift stops at the same face a wall would stop it at, and a slab still on its way up
+//  pushes a marble off toward whichever side of it the marble is more on.
+export const LIFT_HALF_W = 0.485; // half the slab's width (a wall cell is 0.97 across)
+export const LIFT_H = WALL_H; // the slab's height: a raised slab stands exactly as tall as a wall

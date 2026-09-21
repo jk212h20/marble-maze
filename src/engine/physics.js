@@ -13,7 +13,7 @@
 //    rotation about Z (tiltZ)  -> gravity component along +x of  g*sin(tiltZ)
 //  A solid sphere rolling without slipping only gets 5/7 of that.
 
-import { DT, BUTTON_R, WINDMILL_HUB_R, WINDMILL_ARM_R, RAMP_LAUNCH, LIFT_SOLID, LIFT_SPEED } from './constants.js';
+import { DT, BUTTON_R, WINDMILL_HUB_R, WINDMILL_ARM_R, RAMP_LAUNCH, LIFT_SOLID, LIFT_SPEED, LIFT_HALF_W } from './constants.js';
 import { makeVials, resetVials as resetVialState, stepVials } from './vials.js';
 //  Every feel-relevant number is read live from TUNING, so the in-game slider panel can
 //  change the physics mid-roll and tests can solve a level under different feels.
@@ -351,8 +351,14 @@ function updateFeatures(world, dt) {
     const held = !!plate?.pressed;
     const target = l.raise ? (held ? 1 : 0) : held ? 0 : 1;
     const step = (l.speed ?? LIFT_SPEED) * dt;
+    const before = l.height;
     const next = l.height + clamp(target - l.height, -step, step);
     l.height = next < 0 ? 0 : next > 1 ? 1 : next;
+    //  Which way the slab is travelling this tick. A slab on its way UP is a wedge under the
+    //  marble: anything sitting on it is pushed off toward the side it is more on (collideMoving).
+    //  A slab on its way DOWN must not push, or a marble riding it would be flicked sideways by a
+    //  wall that is meant to sink out from under it - so the collider reads this flag.
+    l.rising = l.height > before + 1e-9;
     const solid = l.height >= LIFT_SOLID;
     if (solid !== l.solid) {
       l.solid = solid;
@@ -486,9 +492,20 @@ function collideMoving(world, ball, contact = null) {
   //  (it is busy rising or sinking under the marble), so it belongs here with the moving parts
   //  and gets their protection: a slab that shoves the marble into a wall band is vetoed rather
   //  than leaving the marble trapped inside it.
+  //  Lifts. The slab you can see is what the marble collides with, so the collider is as wide as
+  //  the slab, centred on its own segment. A fully raised slab is simply a wall. A slab still on
+  //  its way UP collides while it is low, with a half-width that grows as it comes up: that is
+  //  what lets a rising wall push a marble off toward whichever side of it the marble is more on,
+  //  instead of letting the marble end up standing inside the slab. A slab on its way down does
+  //  not collide at all; it is meant to sink out from under whatever is standing on it.
   for (const l of f.lifts) {
-    if (l.height < LIFT_SOLID) continue;
-    for (const seg of l.segments) bump = Math.max(bump, pushOutOfSegment(ball, seg.a, seg.b, 0.45, [0, 0], 0.2, contact));
+    if (l.solid) {
+      for (const seg of l.segments) bump = Math.max(bump, pushOutOfSegment(ball, seg.a, seg.b, 0.45, [0, 0], 0.2, contact, LIFT_HALF_W));
+      continue;
+    }
+    if (!l.rising || !(l.height > 0)) continue;
+    const grow = Math.min(1, l.height / LIFT_SOLID);
+    for (const seg of l.segments) bump = Math.max(bump, pushOutOfSegment(ball, seg.a, seg.b, 0.1, [0, 0], 0.35, contact, LIFT_HALF_W * grow));
   }
   return bump;
 }
@@ -606,7 +623,7 @@ function checkPlates(world, ball) {
   const f = world.features;
   for (const plate of f.plates) {
     const d = len2(ball.x - plate.x, ball.z - plate.z);
-    if (d > BUTTON_R) continue;
+    if (d > (plate.radius ?? BUTTON_R)) continue;
     //  The press is recorded whether or not the plate owns a gate: a lift reads exactly this
     //  flag, so a plate can drive a raising wall, a timing gate, or both.
     const wasPressed = !!plate.pressed;
@@ -914,6 +931,7 @@ export function resetBall(world, ball = null) {
   for (const l of world.features.lifts) {
     l.height = l.raise ? 0 : 1;
     l.solid = l.height >= LIFT_SOLID;
+    l.rising = false;
   }
   for (const p of world.features.plates) p.pressed = false;
 }
