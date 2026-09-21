@@ -88,6 +88,14 @@ main {
   min-height: 0;
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr) 400px;
+  /*
+   *  An implicit `auto` row is content-sized, so a tall column (or the canvas's own intrinsic
+   *  height) could make the row taller than the viewport - and `body { overflow: hidden }` then
+   *  clipped the bottom of the stage, taking the tool-guidance bar and the footer with it. An
+   *  explicit `minmax(0, 1fr)` row is exactly the height available and can always shrink.
+   */
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
 }
 
 aside {
@@ -210,6 +218,8 @@ kbd {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: #101216;
 }
 

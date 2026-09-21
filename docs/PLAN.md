@@ -47,6 +47,12 @@ every guarantee that survives is executable on a fresh clone.
   for over ten minutes. Root cause was the parity check's shape, not its assertions: five live
   software-GL browser contexts in a row, and the later boots never finished on the runner. It now
   uses one page, one navigation per fixture (140 s for all four checks locally).
+- **Phase 1 — done, CI green.** Three jobs, and the run above is the proof (2026-09-21,
+  [35550452311](https://github.com/jk212h20/marble-maze/actions/runs/35550452311)):
+  `node checks` 29 s, `browser smoke` 7 m 25 s, `browser checks` (tuning panel, audio, renderer
+  parity) 4 m 10 s — 7 m 25 s wall, because they run on separate runners. The smoke check is the
+  slow one by a wide margin, which is why it has a job to itself. `gen-status --check` is wired
+  into the node job, so a stale count in README or STATUS now fails CI.
 - **Phase 0 — done.** Public remote at [github.com/jk212h20/marble-maze](https://github.com/jk212h20/marble-maze),
   `v1.0-baseline` tagged, LICENSE, `.nvmrc` at 26 and `engines >=24`, `.gitattributes`.
 - **Phase 1 — done, with one caveat.** `npm run check` is the gate and CI runs it; Playwright is a

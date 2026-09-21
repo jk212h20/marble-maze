@@ -3,7 +3,7 @@ name: checks
 # Three jobs, because they have different needs and very different costs.
 #
 # The node checks run anywhere node does and take seconds. The browser checks need a Chromium with
-# software GL, and on a 2-core runner one smoke check alone measured **7m35s** (versus about a
+# software GL, and on a 2-core runner one smoke check alone measured **7m25s** (versus about a
 # minute on this laptop), so they are split across two runners to keep the wall time down and to
 # make a failure say which check it was instead of "the browser step". Neither needs a GPU, a build
 # step, or a server started by hand: sim/check-browser.mjs starts one on an ephemeral port.
