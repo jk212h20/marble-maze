@@ -1,0 +1,155 @@
+# Plan: firm ground before more levels
+
+The engine, the level format and levels 1–4 are in good shape: 219 checks pass in ~3.5 s,
+there is no build step, and `docs/DESIGN.md` is unusually honest about its invariants. The
+problem is not quality — it is that **the guarantees are not enforced anywhere except when
+somebody remembers to run them**, and that **every layer tracks the obstacle vocabulary
+separately**, so the layers drift.
+
+Evidence for that, from the current tree:
+
+- `oneway` exists in `levels.js` and `physics.js` and nowhere else: no renderer, no test, no
+  level. Nothing noticed.
+- `README.md` claimed 213 checks (actually 219) and listed "Levels 1-3" (there are 4) and a
+  slate of "4-10" (it is 5-12). Pure drift, fixed by hand in `25c14c5`.
+- `tools/level-editor/check.mjs` refuses to run the autopilot because the solver "has not kept
+  up with the engine". So the editor's own verdict is knowingly incomplete.
+- `tests/marbles.test.js` says the quiet part out loud: "the rest of scene.js is exercised in
+  the browser". The largest file in the repo is covered by one pure function in CI.
+- The browser checks depend on a **machine-global** Playwright
+  (`/opt/homebrew/lib/node_modules/playwright`) and a hand-started server, so they run on this
+  Mac or not at all.
+- No git remote, no CI, no LICENSE, no pinned node version, no provenance manifest for the two
+  vendored libraries.
+
+The goal of this plan: **level 5 can be authored without silently weakening a guarantee**, and
+every guarantee that survives is executable on a fresh clone.
+
+## Three decisions that drive everything
+
+1. **One registry of mechanics, and generated checks.** A single table says what each mechanic
+   is and which layers implement it. Drift then fails a test instead of being discovered by eye.
+2. **A guarantee is either enforced in CI or deleted — never trusted.** If the autopilot can no
+   longer prove playability for a mechanic, say that in the registry and require a scripted plan
+   for that mechanic instead of implying a proof that does not exist.
+3. **One authored level per new mechanic is the definition of done.** A mechanic with physics,
+   tests and a tuning slider but no level is unfinished, not shipped (`docs/STATUS.md` is the
+   current list).
+
+## Phase 0 — Preserve the work (~30 min)
+
+The repository exists in exactly one place and has no tags.
+
+- [ ] Create a remote and push (`gh repo create marble-maze --private --source=. --push`)
+- [ ] Tag the current state `v1.0-baseline` so "before the changes" is always resolvable
+- [ ] Add `LICENSE` (package.json already says ISC; the file is missing)
+- [ ] Add `.nvmrc` / `engines: { node: ">=22" }` (dev machine is node 26)
+- [ ] Add `.gitattributes` with `*.png -text` so the 69 MB of reference renders never get
+      line-ending-mangled
+
+## Phase 1 — Green on every push (1–2 h)
+
+- [ ] `npm run check` = `node tests/run.js` plus `node tools/level-editor/check.mjs --level
+      <id>` for every built level
+- [ ] Pin Playwright as a **devDependency** so `sim/*.mjs` stop reaching into a global path
+- [ ] GitHub Actions workflow: checkout, `npm ci`, `node -v`, `npm run check` on push and PR
+- [ ] Let CI run the three `sim/*.mjs` checks headlessly (they already use SwiftShader, so no
+      GPU is needed) against a server started in the same job
+- [ ] Record the baseline: 219 checks / 14 suites, ~3.5 s
+
+Deliberately excluded from CI: `npm run perf` and `npm run marble-cost` need a real GPU.
+
+## Phase 2 — One registry, and drift becomes a failing test (3–4 h)
+
+- [ ] Add `src/engine/mechanics.js`: one entry per mechanic —
+      `{ key, label, builderKey, physics: 'yes'|'none', render: 'mesh'|'painted'|'none',
+      tuningPaths: [...], editorTool: bool, usedByLevels: [...], note }`
+- [ ] `tests/mechanics.test.js` asserts, for every entry: the level builder maps `builderKey`;
+      the physics reads it; the renderer draws it *or* the entry says `render: 'none'`; a level
+      uses it *or* the entry is marked `unused`
+- [ ] Generate the mechanic table in `docs/STATUS.md` from the registry instead of hand-writing
+      it, so the doc cannot drift from the code
+- [ ] Add a small doc-drift check: the check count in `README.md` must equal the runner's own
+      total, and the level ranges in `README.md`/`DESIGN.md` must match `levels.js`/`slate.js`
+
+Phase 2 immediately converts the class of bug that produced the missing flap into a red test.
+
+## Phase 3 — Renderer parity (1–2 days)
+
+- [ ] Decide the flap's fate first: give it a visual (a brass flapper with a direction
+      arrow), or drop `oneways` from the format until a level needs it. Either way, remove the
+      current state where the format promises something the board never shows
+- [ ] `sim/render-parity.mjs`: boot the built levels **and one synthetic fixture per mechanic**
+      in Chromium, and assert (a) no console errors, (b) the debug API reports a mesh for every
+      mechanic the level declares, (c) no collider exists without a visual
+- [ ] Expose what the test needs from the debug API rather than reading scene internals
+- [ ] Keep the shot tools (`npm run materials|marbles|marble-board|panel`) as the human review
+      layer; assert on numbers in the test, not on pixels
+
+## Phase 4 — Restore the playability contract (2–3 days)
+
+The autopilot is two things at once — the proof that a level is tilt-solvable and the in-game
+**show me** button — and it currently ignores belts, vents, magnets, gate timing, moving pits
+and sub-unit placement.
+
+- [ ] Extend `pathfind.js`/`autopilot.js` for the steady in-plane forces (belt, vent, magnet):
+      a pure-pursuit controller with a drift feed-forward is a small change and covers slate 7
+      and 8
+- [ ] For stateful mechanics (gates on a timer, cooperative plates, moving pits), keep the
+      `both-locks` pattern — a scripted plan in `tests/lifts.test.js` — and make the registry
+      say "proved by scripted plan", not "solved by autopilot"
+- [ ] Add one solver-or-plan check per mechanic, so every fixture level has a playability proof
+- [ ] Then either wire `check.mjs --solve` to the honest solver, or delete the flag and its
+      apology. No knowingly-misleading verdicts in a tool
+
+## Phase 5 — Level authoring pipeline (1–2 days)
+
+Today a draft lives in `localStorage`, gets exported as JSON, and is pasted into `levels.js` by
+hand.
+
+- [ ] `tools/promote-level.mjs <draft.json>`: validate → solve → append to the level registry,
+      refusing to write in a level that fails the fairness or playability rules
+- [ ] Move the built levels out of the 854-line `levels.js` into `levels/*.js` with an index, so
+      adding level 5 is adding a file and one line
+- [ ] Make `docs/STATUS.md` the checklist for the promotion gate: a mechanic ships with a level,
+      a renderer, a registry entry, and a playability proof
+
+## Phase 6 — Perf and GPU budgets (half day, then background jobs)
+
+- [ ] Record a baseline frame-time distribution and glass cost in `docs/PERF.md`
+- [ ] Turn `perf-profile.mjs` and `marble-cost.mjs` into assertions against that baseline, run
+      as a **registered background job** (they need a real GPU, so they are not CI material)
+- [ ] Have the jobs print a heartbeat, per the stall-watchdog rule, or pass `--stall-tolerance 0`
+
+## Phase 7 — Docs hygiene (half day)
+
+- [ ] One source of truth per fact: mechanics → registry, levels → `levels.js`, counts → the
+      runner. Everything else links rather than restates
+- [ ] Trim `README.md`: it is 44 KB and repeats the design notes. Split the marble and materials
+      essays into `docs/` and leave the README as "how it plays / how to run it"
+- [ ] Fold `STATUS.md`'s generated sections into the build so they cannot go stale
+
+## Definition of ready for level 5 (Hextile)
+
+- [ ] A fresh clone runs `npm ci && npm run check` green, with no machine-global dependencies
+- [ ] A remote holds the history, and the baseline is tagged
+- [ ] Every mechanic is in the registry, with an explicit renderer and playability status
+- [ ] No mechanic has physics-without-visual, and none is "unused" without a level planned
+- [ ] `tools/promote-level.mjs` can take a Hextile draft from the editor to `levels/` in one
+      command, gated on validation and a playability proof
+- [ ] `docs/STATUS.md` is generated, so the answer to "what is stubbed?" is always current
+
+## Risks and sequencing
+
+- **Highest risk / lowest cost first:** Phases 0 and 1. Losing the only copy, or letting the
+  suite rot, dwarfs everything else.
+- **Highest value for the drift class:** Phase 2. It is a few hours and it makes the flap bug
+  impossible to repeat.
+- **Most likely to be derailed:** Phase 4. Extending the autopilot is open-ended; timebox it to
+  the three steady-force mechanics and fall back to scripted plans rather than chasing a general
+  solver.
+- **Deliberately out of scope:** making the renderer pixel-diffable, a bundler, TypeScript, and
+  any migration off the vendored three.js. The no-build-step property is load-bearing for how
+  quickly this thing boots.
+
+Suggested start: Phase 0 and 1 today, Phase 2 next, and only then touch level 5.
