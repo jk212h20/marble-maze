@@ -145,13 +145,14 @@ cannot quietly make a level unplayable.
 `npm run check` is what CI runs and what a change has to pass: the headless checks **and** every
 shipped level through the level editor's own rules. It needs nothing but node.
 
-`npm run check:browser` then runs the three real-browser checks, starting the dev server itself
+`npm run check:browser` then runs the four real-browser checks, starting the dev server itself
 on an ephemeral port so nothing has to be started by hand.
 
 ```bash
 npm run check           # node tests + every shipped level through the editor's rules
-npm run check:browser   # the three browser checks below, with the server handled for you
-npm test                # 233 headless checks: physics, level structure, tuning, profiles, solvability, marbles
+npm run check:browser   # the four browser checks below, with the server handled for you
+npm run parity          # just the renderer-parity check: every mechanic on the built board
+npm test                # 239 headless checks: physics, level structure, tuning, profiles, solvability, marbles
 npm run levels          # just the level-editor rules over every shipped level
 node sim/smoke.mjs      # real browser: loads the page, drives it, screenshots, times frames
 node sim/tune-check.mjs # real browser: proves the tuning panel changes the simulation,
@@ -167,7 +168,7 @@ npm run marbles         # lab shots; npm run marble-board for the same marbles o
                         # (both are SwiftShader, because the point there is the pixels)
 ```
 
-Each of the three browser checks takes `--url` and defaults to `http://127.0.0.1:3010/`, so you can
+Each of the browser checks takes `--url` and defaults to `http://127.0.0.1:3010/`, so you can
 still run one by hand against a server you started yourself
 (`devports launch --name marblemaze --port 3010 -- node sim/serve.js --port {port}`).
 The audio check renders the real voices through an OfflineAudioContext, so it proves each sound is

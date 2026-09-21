@@ -141,16 +141,27 @@ report.marble = await page.evaluate(async () => {
     });
     return m.parent;
   };
-  // The rendered scale is only written by the frame loop, so this one genuinely has to
-  // wait for frames - give a slow renderer room for a couple of them.
+  //  The rendered scale is only written by the frame loop, so this genuinely has to wait for
+  //  frames. It waits for the *scale to arrive* rather than for a number of milliseconds: a fixed
+  //  sleep is a frame-rate guess, and this one passed on a laptop while starving on a CI runner
+  //  painting a couple of frames a second (it reported 0.2 -> 0.2 and failed a real assertion).
+  const until = async (pred, label) => {
+    const t0 = performance.now();
+    while (performance.now() - t0 < 20000) {
+      if (pred()) return;
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    throw new Error(`the rendered marble never ${label} (waited 20s)`);
+  };
+  const near = (want) => () => Math.abs(find().scale.x - want) < 1e-6;
   window.__maze.tuning.set('ballR', 0.2);
-  await sleep(700);
+  await until(near(0.2), 'took the small size');
   const small = find().scale.x;
   window.__maze.tuning.set('ballR', 0.4);
-  await sleep(700);
+  await until(near(0.4), 'took the large size');
   const big = find().scale.x;
   window.__maze.tuning.reset();
-  await sleep(500);
+  await until((s) => find().scale.x > 0.2 && find().scale.x < 0.4, 'went back to the shipped size');
   return { small: +small.toFixed(3), big: +big.toFixed(3), back: +find().scale.x.toFixed(3) };
 });
 if (!(report.marble.big > report.marble.small * 1.5)) {

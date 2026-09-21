@@ -128,7 +128,7 @@ level that half works.
 | Pressure button | Opens its gate for `hold` seconds, and drives any lift that names it | Raised circular metal button — a dark seat, a metal body and a brighter cap that sinks and lights a ring when held. Placeable on any ground, like a pit |
 | Lift, `lower` | A wall slab that rests raised and sinks while its button is held | A metal wall slab, cut from its button's metal, sliding down into a routed slot |
 | Lift, `raise` | A wall slab that rests flush and stands up while its button is held | The same, climbing out of its slot: a wall you can see come |
-| One-way flap | Blocks from one side only | — (level 7) |
+| One-way flap | Blocks from one side only | A hinged brass leaf in a routed kerf, leaning the way a marble from the allowed side pushes it, with an arrow on the floor pointing the way through |
 | Teleport pads | Move the marble to the twin pad, keeping its speed | Cyan disc that re-arms when cleared |
 
 ## Ramps

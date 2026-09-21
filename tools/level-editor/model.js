@@ -888,7 +888,14 @@ export function specToSource(spec) {
     );
   }
   if (s.magnets.length) {
-    lines.push(`    magnets: [${s.magnets.map((m) => `{ cell: [${m.cell.join(', ')}], radius: ${m.radius}, strength: ${m.strength} }`).join(', ')}],`);
+    //  `radius` is optional, so it is written only when there is one. The version before this
+    //  emitted `radius: undefined` for a magnet placed without a radius, and that level then
+    //  crashed the frame loop the moment a marble came near it.
+    lines.push(
+      `    magnets: [${s.magnets
+        .map((m) => `{ cell: [${m.cell.join(', ')}]${Number.isFinite(m.radius) ? `, radius: ${m.radius}` : ''}, strength: ${m.strength} }`)
+        .join(', ')}],`,
+    );
   }
   if (s.ramps.length) {
     lines.push(

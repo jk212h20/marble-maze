@@ -7,6 +7,7 @@
     "test": "node tests/run.js",
     "check": "node tests/run.js && node tools/check-levels.mjs && node tools/gen-status.mjs --check",
     "check:browser": "node sim/check-browser.mjs",
+    "parity": "node sim/render-parity.mjs",
     "levels": "node tools/check-levels.mjs",
     "status": "node tools/gen-status.mjs --write",
     "start": "node sim/serve.js",

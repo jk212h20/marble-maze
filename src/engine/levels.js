@@ -63,6 +63,7 @@ import {
   LIFT_SPEED,
   LIFT_SOLID,
   BUTTON_R,
+  MAGNET_RADIUS,
 } from './constants.js';
 import { makeRegion } from './materials.js';
 import { DEFAULT_METAL } from './metals.js';
@@ -601,7 +602,10 @@ export function buildLevel(spec) {
       ramps: (spec.ramps ?? []).map((r) => rampFeature(r, w, h)),
       magnets: (spec.magnets ?? []).map((m) => {
         const [x, z] = toWorld(m.cell[0], m.cell[1]);
-        return { ...m, x, z };
+        //  `radius` is optional in the format, so it is defaulted here - one place, so the
+        //  physics never has to guess and the editor's hint ("inside its radius") is true of a
+        //  magnet the level did not measure.
+        return { ...m, radius: Number.isFinite(m.radius) ? m.radius : MAGNET_RADIUS, x, z };
       }),
       pads: (spec.teleports ?? []).map((t, i) => {
         const [ax, az] = toWorld(t.a[0], t.a[1]);

@@ -276,6 +276,11 @@ export const RAMP_LAUNCH = 8.0;
 export const CONVEYOR_SPEED = 1.5; // belt surface speed
 export const VENT_ACCEL = 3.2; // fan/vent push
 export const MAGNET_STRENGTH = 3.0; // signed; negative repels
+//  How far a magnet reaches when the level does not say. Without a default, an authored magnet
+//  with no `radius` had none at all: the falloff became NaN on the first step and the marble's
+//  position went with it, which crashed the frame loop rather than pulling anything.
+//  Two board units is a little over two cells - a local pull, not a board-wide one.
+export const MAGNET_RADIUS = 2.0;
 export const TELEPORT_R = 0.34;
 export const TELEPORT_COOLDOWN = 0.45;
 export const BUTTON_R = 0.36;

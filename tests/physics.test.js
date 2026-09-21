@@ -12,6 +12,7 @@ import {
   GATE_OPEN_TIME,
   TELEPORT_COOLDOWN,
   WINDMILL_HUB_R,
+  MAGNET_RADIUS,
   RAMP_HEIGHT,
   RAMP_MAX_SLOPE,
   GRAVITY,
@@ -334,6 +335,41 @@ export function tests(t) {
     push.ball.x = -1.5;
     run(push, 3, () => ({ x: 0, z: 0 }));
     if (!(push.ball.x < -1.8)) throw new Error(`repelling magnet did nothing (x=${push.ball.x.toFixed(2)})`);
+  });
+
+  t.ok('a magnet that names no radius is still a magnet, and never makes the marble NaN', () => {
+    //  `radius` is optional in the level format. Before levels.js defaulted it, a magnet without
+    //  one had `radius === undefined`, so the falloff was NaN on the first step and the marble's
+    //  position went NaN with it - which crashed the frame loop in sim/render-parity.mjs rather
+    //  than pulling anything. Found by that check, on a fixture with no radius.
+    const level = fixture({ magnets: [{ cell: [7, 4], strength: 3 }] });
+    const magnet = level.features.magnets[0];
+    if (magnet.radius !== MAGNET_RADIUS) {
+      throw new Error(`an authored radius of 'undefined' was not defaulted (got ${magnet.radius})`);
+    }
+    const w = makeWorld(level);
+    w.ball.x = 0.2;
+    const before = w.ball.x;
+    run(w, 3, () => ({ x: 0, z: 0 }));
+    if (!Number.isFinite(w.ball.x) || !Number.isFinite(w.ball.z)) {
+      throw new Error('the marble position went NaN');
+    }
+    if (!(w.ball.x > before + 0.2)) {
+      throw new Error(`the default-radius magnet did not pull (x ${before} -> ${w.ball.x.toFixed(3)})`);
+    }
+  });
+
+  t.ok('a magnet with no radius at all cannot NaN a hand-built feature', () => {
+    //  The engine's own guard, independent of the format's default: a feature built by hand with
+    //  no radius must simply do nothing.
+    const level = fixture({});
+    level.features.magnets = [{ x: 0, z: 0, strength: 3 }];
+    const w = makeWorld(level);
+    w.ball.x = 0.2;
+    run(w, 1, () => ({ x: 0, z: 0 }));
+    if (!Number.isFinite(w.ball.x) || !Number.isFinite(w.ball.z)) {
+      throw new Error('a magnet with no radius NaN-ed the marble');
+    }
   });
 
   t.ok('teleport pads hand the marble to their partner and then cool down', () => {

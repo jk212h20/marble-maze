@@ -1470,6 +1470,7 @@ export function createScene(canvas, level, { wood = null, marbleLook = DEFAULT_M
     const magnets = [];
     const gates = [];
     const lifts = [];
+    const oneways = [];
 
     for (const p of f.pegs) {
       const g = new THREE.Group();
@@ -1681,7 +1682,89 @@ export function createScene(canvas, level, { wood = null, marbleLook = DEFAULT_M
       lifts.push({ mesh: g, slab, def: l, upY, downY });
     }
 
-    return { root, pegs, windmills, pendulums, movers, plates, pads, magnets, gates, lifts };
+    //  A one-way flap. The engine blocks a marble on the *-normal* side of the segment and lets
+    //  one on the +normal side through, so the picture has to say which way is through: an arrow
+    //  on the floor on the allowed side, and a leaf that hangs leaning the way it is pushed.
+    //  This was the one mechanic with a collider and no visual (see docs/STATUS.md); without it a
+    //  level could author an invisible wall.
+    for (const ow of f.oneways ?? []) {
+      const seg = ow.segments[0];
+      const dx = seg.b[0] - seg.a[0];
+      const dz = seg.b[1] - seg.a[1];
+      const len = Math.hypot(dx, dz) || 1;
+      const ux = dx / len;
+      const uz = dz / len;
+      const midX = (seg.a[0] + seg.b[0]) / 2;
+      const midZ = (seg.a[1] + seg.b[1]) / 2;
+      //  `rotation.y = along` maps a box's local +X onto the segment, exactly as gates and lifts
+      //  do; its local +Z is then the segment turned a quarter turn, i.e. (-uz, ux).
+      const along = Math.atan2(-uz, ux);
+      const nx = ow.normal[0];
+      const nz = ow.normal[1];
+      const g = new THREE.Group();
+
+      //  The routed kerf the leaf stands in, so the flap belongs to the board rather than
+      //  resting on it. Wide enough to hold the leaf's swing.
+      const kerf = new THREE.Mesh(new THREE.BoxGeometry(len, 0.02, 0.17), assets.dark);
+      kerf.position.set(midX, 0.009, midZ);
+      kerf.rotation.y = along;
+      kerf.receiveShadow = true;
+      g.add(kerf);
+
+      //  The hinge bar across the whole opening: what the leaf swings on, and what stops the
+      //  flap from reading as a thin wall.
+      const hinge = new THREE.Mesh(new THREE.BoxGeometry(len, 0.055, 0.075), assets.brass);
+      hinge.position.set(midX, 0.47, midZ);
+      hinge.rotation.y = along;
+      hinge.castShadow = true;
+      g.add(hinge);
+
+      //  Two nested groups, so the two rotations cannot be confused: the yaw puts the local X on
+      //  the segment, and the tilt inside it then turns the leaf about that same axis. A single
+      //  Euler pair on one mesh would put the lean a quarter turn out.
+      const yaw = new THREE.Group();
+      yaw.position.set(midX, 0.47, midZ);
+      yaw.rotation.y = along;
+      const tilt = new THREE.Group();
+      //  Lean toward -normal (the way a marble from the allowed side pushes it). The local +Z
+      //  axis is (-uz, ux) in world space, so the component of -normal along it decides the sign,
+      //  and the lean flips with the flap instead of hanging the wrong way round.
+      const leanSign = Math.sign(nx * uz - nz * ux) || 1;
+      tilt.rotation.x = 0.18 * leanSign;
+      yaw.add(tilt);
+      //  The leaf hangs from the hinge and reaches almost to the floor: it has to stand in the
+      //  marble's way, not float above it.
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(len, 0.44, 0.035), assets.iron);
+      leaf.name = 'oneway-leaf';
+      leaf.position.y = -0.22;
+      leaf.castShadow = true;
+      tilt.add(leaf);
+      //  A hazard stripe along its top edge, the same language the gate bar uses.
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(len, 0.07, 0.045), assets.hazard);
+      stripe.position.set(0, -0.045, 0);
+      tilt.add(stripe);
+      g.add(yaw);
+
+      //  The arrow on the allowed side, pointing the way through: local +Z of a group yawed by
+      //  `atan2(dx, dz)` points along (dx, dz), so it is aimed at -normal.
+      const arrow = new THREE.Group();
+      arrow.name = 'oneway-arrow';
+      arrow.position.set(midX + nx * 0.46, 0.02, midZ + nz * 0.46);
+      arrow.rotation.y = Math.atan2(-nx, -nz);
+      const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.014, 0.2), assets.brass);
+      shaft.position.z = -0.06;
+      arrow.add(shaft);
+      const head = new THREE.Mesh(new THREE.ConeGeometry(0.095, 0.15, 3), assets.brass);
+      head.rotation.x = Math.PI / 2;
+      head.position.z = 0.1;
+      arrow.add(head);
+      g.add(arrow);
+
+      root.add(g);
+      oneways.push({ mesh: g, leaf, def: ow });
+    }
+
+    return { root, pegs, windmills, pendulums, movers, plates, pads, magnets, gates, lifts, oneways };
   }
 
   // ---------------------------------------------------------------------------

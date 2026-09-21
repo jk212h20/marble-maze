@@ -22,6 +22,7 @@ const CHECKS = [
   { name: 'smoke', file: 'smoke.mjs', args: () => ['--out', '/tmp/marblemaze-shots'] },
   { name: 'tune', file: 'tune-check.mjs', args: () => [] },
   { name: 'audio', file: 'audio-check.mjs', args: () => [] },
+  { name: 'parity', file: 'render-parity.mjs', args: () => ['--out', '/tmp/marblemaze-parity'] },
 ];
 
 const wanted = process.argv.slice(2).filter((a) => !a.startsWith('--'));

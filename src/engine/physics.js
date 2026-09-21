@@ -531,8 +531,12 @@ function fieldAccel(world, ball) {
     const dx = m.x - ball.x;
     const dz = m.z - ball.z;
     const d = len2(dx, dz);
-    if (d > m.radius || d < 1e-4) continue;
-    const falloff = 1 - d / m.radius;
+    //  `levels.js` defaults the radius, but a hand-built feature must not be able to turn the
+    //  marble into NaN: the comparison is written so an absent or NaN radius simply skips the
+    //  magnet, and the epsilon keeps the centre (where the direction is undefined) from firing.
+    const radius = Number.isFinite(m.radius) ? m.radius : 0;
+    if (!(d > 1e-4) || d > radius) continue;
+    const falloff = 1 - d / radius;
     const str = (m.strength ?? T.magnetStrength) * falloff;
     ax += (dx / d) * str;
     az += (dz / d) * str;
